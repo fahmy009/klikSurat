@@ -1,0 +1,345 @@
+<aside id="main-sidebar" class="w-full md:w-[380px] lg:w-[420px] xl:w-[450px] bg-white border-r border-slate-200 flex flex-col shrink-0 transition-all duration-300 overflow-hidden">
+        <div id="sidebar-tabs" class="grid grid-cols-5 bg-slate-50 border-b border-slate-200 text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center shrink-0">
+          <button id="btn-tab-isi" onclick="switchTab('isi')" class="py-3 border-b-2 border-brand-blue text-brand-blue bg-white flex flex-col items-center gap-1"><i class="fa-solid fa-file-signature text-sm"></i> Admin</button>
+          <button id="btn-tab-redaksi" onclick="switchTab('redaksi')" class="py-3 border-b-2 border-transparent hover:bg-slate-100 flex flex-col items-center gap-1 text-slate-500"><i class="fa-solid fa-pen-nib text-sm"></i> Redaksi</button>
+          <button id="btn-tab-kop" onclick="switchTab('kop')" class="py-3 border-b-2 border-transparent hover:bg-slate-100 flex flex-col items-center gap-1"><i class="fa fa-school text-sm"></i> Kop Surat</button>
+          <button id="btn-tab-ttd" onclick="switchTab('ttd')" class="py-3 border-b-2 border-transparent hover:bg-slate-100 flex flex-col items-center gap-1"><i class="fa fa-stamp text-sm"></i> TTD</button>
+          <button id="btn-tab-arsip" onclick="switchTab('arsip'); muatDataArsip();" class="py-3 border-b-2 border-transparent hover:bg-slate-100 flex flex-col items-center gap-1"><i class="fa fa-folder-open text-sm"></i> Arsip</button>
+        </div>
+
+        <div class="flex-1 overflow-y-auto p-5 space-y-5">
+          <!-- Section: Administrasi Surat -->
+          <div id="section-isi" class="space-y-3">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 mb-1.5 uppercase tracking-wider">Pencarian & Pilih Template Surat</label>
+              <div class="relative mb-2 group">
+                <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                  <i class="fa fa-search text-xs"></i>
+                </span>
+                <input type="text" id="search_template" oninput="filterTemplate(this.value)" onfocus="filterTemplate(this.value)" placeholder="Cari draf (misal: Undangan)..." class="w-full pl-9 pr-3 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-blue transition-all" autocomplete="off">
+                
+                <!-- HASIL PENCARIAN INSTAN (MELAYANG) -->
+                <div id="search_results_list" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl hidden max-h-64 overflow-y-auto divide-y divide-slate-50"></div>
+              </div>
+              
+              <div class="flex items-center gap-2 mb-2">
+                <span class="h-px flex-1 bg-slate-100"></span>
+                <span class="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Atau Pilih Manual</span>
+                <span class="h-px flex-1 bg-slate-100"></span>
+              </div>
+
+              <select id="in_pilih_template" onchange="pilihTemplateDinamis(this.value)" class="w-full p-3 bg-white dark:bg-slate-800 dark:text-slate-100 border border-slate-200 dark:border-slate-700 rounded-xl text-sm focus:ring-2 focus:ring-brand-blue outline-none transition-all shadow-sm">
+                <option value="">-- Buat Surat Baru (Kosong) --</option>
+              </select>
+
+              <input type="file" id="input_impor_template" class="hidden" accept=".json" onchange="handleImporFile(event)">
+            </div>
+
+            <!-- Section: Pilih Siswa (Dinamis) -->
+            <div id="section-pilih-siswa" class="hidden animate-in fade-in slide-in-from-top-2 duration-300">
+              <div class="p-4 bg-emerald-50/50 dark:bg-emerald-900/10 border border-emerald-200 dark:border-emerald-800 rounded-2xl space-y-3">
+                <div class="flex items-center justify-between">
+                  <label class="block text-[10px] font-black text-emerald-700 dark:text-emerald-400 uppercase tracking-widest">Data Siswa Terkait</label>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[9px] font-bold text-slate-400 uppercase">Mode Massal</span>
+                    <label class="relative inline-flex items-center cursor-pointer scale-75">
+                      <input type="checkbox" id="toggle_batch_mode" class="sr-only peer" onchange="toggleBatchMode(this.checked)">
+                      <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                    </label>
+                  </div>
+                </div>
+                <div class="relative">
+                  <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-emerald-400">
+                    <i class="fa fa-user-graduate text-xs"></i>
+                  </span>
+                  <input type="text" id="search_siswa" oninput="filterSiswa(this.value)" placeholder="Ketik Nama atau NISN Siswa..." class="w-full pl-9 pr-3 py-2.5 bg-white border border-emerald-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-emerald-500 transition-all">
+                  <div id="siswa_results_list" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl hidden max-h-48 overflow-y-auto divide-y divide-slate-50"></div>
+                </div>
+                <!-- Daftar Siswa Terpilih (Batch) -->
+                <div id="siswa_selected_list" class="flex flex-wrap gap-1.5 hidden"></div>
+              </div>
+            </div>
+
+            <!-- Section: Pilih Guru (Dinamis) -->
+            <div id="section-pilih-guru" class="hidden animate-in fade-in slide-in-from-top-2 duration-300">
+              <div class="p-4 bg-blue-50/50 dark:bg-blue-900/10 border border-blue-200 dark:border-blue-800 rounded-2xl space-y-3">
+                <div class="flex items-center justify-between">
+                  <label class="block text-[10px] font-black text-blue-700 dark:text-blue-400 uppercase tracking-widest">Data Guru Terkait</label>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[9px] font-bold text-slate-400 uppercase">Mode Massal</span>
+                    <label class="relative inline-flex items-center cursor-pointer scale-75">
+                      <input type="checkbox" id="toggle_batch_mode_guru" class="sr-only peer" onchange="toggleBatchModeGuru(this.checked)">
+                      <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-blue-600"></div>
+                    </label>
+                  </div>
+                </div>
+                <div class="relative">
+                  <input type="text" id="search_guru" oninput="filterGuru(this.value)" placeholder="Ketik Nama atau NIP Guru..." class="w-full pl-9 pr-3 py-2.5 bg-white border border-blue-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all">
+                  <div id="guru_results_list" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl hidden max-h-48 overflow-y-auto divide-y divide-slate-50"></div>
+                </div>
+                <div id="guru_selected_list" class="flex flex-wrap gap-1.5 hidden"></div>
+              </div>
+            </div>
+
+            <div class="p-3 bg-brand-blue/5 border border-brand-blue/10 rounded-xl">
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-brand-blue mb-1.5">Jenis Layout Dokumen</label>
+              <select id="in_layout_type" onchange="updateLivePreview()" class="w-full px-3 py-2 bg-white border border-brand-blue/20 rounded-lg text-sm outline-none focus:ring-2 focus:ring-brand-blue">
+                <option value="standard">Surat Dinas Standard (Blok Kiri)</option>
+                <option value="centered">Surat Keterangan/Keputusan (Judul Tengah)</option>
+              </select>
+              <p class="text-[9px] text-slate-400 mt-1 italic">*Gunakan 'Judul Tengah' untuk SKL, SK, atau Surat Pernyataan.</p>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Klasifikasi Nomor</label>
+              <select id="in_kode_klasifikasi" onchange="mintaNomorOtomatis()" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-sm outline-none">
+                <option value="400.3.5">400.3.5 - Administrasi Sekolah</option>
+                <option value="005">005 - Undangan</option>
+                <option value="421.2">421.2 - Pendidikan Dasar</option>
+                <option value="421.3">421.3 - Kesiswaan</option>
+                <option value="421.5">421.5 - Kurikulum</option>
+                <option value="800">800 - Kepegawaian</option>
+                <option value="900">900 - Keuangan</option>
+                <option value="045">045 - Arsip/Dokumentasi</option>
+              </select>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Nomor Registrasi Dinas</label>
+              <div class="flex gap-2">
+                <input type="text" id="in_nomor" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-sm outline-none font-mono" oninput="updateLivePreview()" onchange="validasiNomorManual()">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Lokasi Surat</label>
+                <input type="text" id="in_lokasi" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-sm" value="Jember" oninput="updateLivePreview()">
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Tanggal Surat</label>
+                <input type="date" id="in_tanggal" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-sm" onchange="updateLivePreview()">
+              </div>
+            </div>
+
+            <div class="grid grid-cols-2 gap-3">
+              <div>
+                <label class="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Sifat Surat</label>
+                <select id="in_sifat" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-sm" onchange="updateLivePreview()">
+                  <option value="Biasa">Biasa</option>
+                  <option value="Penting">Penting</option>
+                  <option value="Segera">Segera</option>
+                  <option value="Rahasia">Rahasia</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[11px] font-bold uppercase text-slate-500 dark:text-slate-400 mb-1">Lampiran</label>
+                <input type="text" id="in_lampiran" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-sm" placeholder="Misal: 1 Berkas" oninput="updateLivePreview()">
+              </div>
+            </div>
+
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Perihal</label>
+              <input type="text" id="in_perihal" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-sm font-semibold outline-none" oninput="updateLivePreview()">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Penerima & Label</label>
+              <div class="flex gap-2">
+                <input type="text" id="in_label_penerima" value="Kepada Yth." class="w-1/3 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-xs outline-none" oninput="updateLivePreview()">
+                <textarea id="in_penerima" class="flex-1 px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-sm outline-none" rows="1" oninput="updateLivePreview()" placeholder="Nama Penerima..."></textarea>
+              </div>
+            </div>
+          </div>
+
+          <!-- Section: Redaksi Surat (TinyMCE) -->
+          <div id="section-redaksi" class="space-y-4 hidden">
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Klausa Pembuka</label>
+              <input type="text" id="in_pembuka" placeholder="Contoh: Dengan hormat," class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-sm outline-none" oninput="updateLivePreview()">
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Isi Redaksi Utama</label>
+              <textarea id="in_isi" class="hidden" aria-hidden="true"></textarea>
+              <div id="quill-isi" class="rounded-xl min-h-[450px]"></div>
+              <p class="mt-2 text-[10px] text-slate-500 dark:text-slate-400">Editor TinyMCE aktif. Gunakan menu tabel untuk membuat daftar atau jadwal yang rapi. Isi otomatis tersimpan ke arsip.</p>
+            </div>
+            <div>
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">Tembusan (Opsional)</label>
+              <textarea id="in_tembusan" class="w-full px-3 py-2 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-sm outline-none" rows="2" placeholder="1. Kepala Dinas..." oninput="updateLivePreview()"></textarea>
+            </div>
+          </div>
+
+          <!-- Section: Kop Surat -->
+          <div id="section-kop" class="space-y-4 hidden">
+            <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-3">
+              <h4 class="text-xs font-bold text-brand-navy uppercase tracking-wider border-b pb-1 flex items-center gap-1.5"><i class="fa-solid fa-sliders text-brand-blue"></i> Standar Geometri Cetak</h4>
+              <div>
+                <label class="text-[10px] text-slate-500 font-bold uppercase">Ukuran Kertas</label>
+                <select id="in_ukuran_kertas" class="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 rounded-lg text-sm outline-none" onchange="sinkronisasiLayoutKonfigurasi()">
+                  <option value="size-a4">Format Internasional A4</option>
+                  <option value="size-f4">Format Birokrasi F4 (Folio)</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Ukuran Font</label>
+                <select id="in_ukuran_font" onchange="sinkronisasiLayoutKonfigurasi()" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg px-2 py-2 text-xs outline-none">
+                  <option value="10pt">10 pt</option>
+                  <option value="11pt">11 pt</option>
+                  <option value="12pt" selected>12 pt (Standar Dinas)</option>
+                  <option value="13pt">13 pt</option>
+                  <option value="14pt">14 pt</option>
+                </select>
+              </div>
+              <div>
+                <label class="text-[10px] text-slate-500 font-bold uppercase">Gaya Huruf (Font)</label>
+                <select id="in_pilihan_font" class="w-full px-3 py-1.5 border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 dark:text-slate-100 rounded-lg text-sm outline-none" onchange="sinkronisasiLayoutKonfigurasi()">
+                  <option value="font-serif-official">Times New Roman (Standar Dinas)</option>
+                  <option value="font-sans-inter">Inter (Modern)</option>
+                  <option value="font-sans-classic">Arial</option>
+                </select>
+              </div>
+              <div>
+                <label class="block text-[10px] font-bold text-slate-400 mb-1 uppercase">Spasi Baris (Line Spacing)</label>
+                <select id="in_line_spacing" onchange="sinkronisasiLayoutKonfigurasi()" class="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg px-2 py-2 text-xs outline-none">
+                  <option value="1.0">Single (1.0)</option>
+                  <option value="1.15">1.15</option>
+                  <option value="1.5">1.5</option>
+                  <option value="1.6" selected>Default (1.6)</option>
+                  <option value="2.0">Double (2.0)</option>
+                </select>
+              </div>
+            </div>
+
+            <div class="bg-slate-50 dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700">
+              <div class="flex items-center justify-between border-b pb-1 mb-2">
+                <h4 class="text-xs font-bold text-brand-navy uppercase tracking-wider flex items-center gap-1.5"><i class="fa-solid fa-arrows-to-line text-brand-blue"></i> Batas Margin</h4>
+                <select id="in_satuan_margin" class="text-[10px] font-bold bg-brand-blue text-white rounded px-2 py-0.5 outline-none cursor-pointer" onchange="sinkronisasiLayoutKonfigurasi()">
+                  <option value="mm">mm</option>
+                  <option value="cm">cm</option>
+                  <option value="in">in</option>
+                </select>
+              </div>
+              <div class="grid grid-cols-4 gap-2">
+                <div><label class="text-[9px] font-bold uppercase block text-center">Atas</label><input type="number" id="in_margin_atas" min="1" class="w-full p-1.5 border bg-white rounded text-center text-xs outline-none" value="20" oninput="sinkronisasiLayoutKonfigurasi()"></div>
+                <div><label class="text-[9px] font-bold uppercase block text-center">Bawah</label><input type="number" id="in_margin_bawah" min="1" class="w-full p-1.5 border bg-white rounded text-center text-xs outline-none" value="20" oninput="sinkronisasiLayoutKonfigurasi()"></div>
+                <div><label class="text-[9px] font-bold uppercase block text-center">Kiri</label><input type="number" id="in_margin_kiri" min="1" class="w-full p-1.5 border bg-white rounded text-center text-xs outline-none" value="25" oninput="sinkronisasiLayoutKonfigurasi()"></div>
+                <div><label class="text-[9px] font-bold uppercase block text-center">Kanan</label><input type="number" id="in_margin_kanan" min="1" class="w-full p-1.5 border bg-white rounded text-center text-xs outline-none" value="20" oninput="sinkronisasiLayoutKonfigurasi()"></div>
+              </div>
+            </div>
+
+            <div class="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
+              <h4 class="text-xs font-bold text-brand-navy uppercase tracking-wider border-b pb-1 flex items-center gap-1.5"><i class="fa-solid fa-building-columns text-brand-blue"></i> Teks Kop</h4>
+              <input type="text" id="in_kop_daerah" class="w-full px-3 py-1.5 bg-white border rounded text-sm" oninput="updateLivePreview()">
+              <input type="text" id="in_kop_sub" class="w-full px-3 py-1.5 bg-white border rounded text-sm" oninput="updateLivePreview()">
+              <input type="text" id="in_kop_sekolah" class="w-full px-3 py-1.5 bg-white border rounded text-sm font-bold" oninput="updateLivePreview()">
+              <input type="text" id="in_kop_alamat" class="w-full px-3 py-1.5 bg-white border rounded text-xs" oninput="updateLivePreview()">
+              <input type="text" id="in_kop_kontak" class="w-full px-3 py-1.5 bg-white border rounded text-[11px]" oninput="updateLivePreview()">
+            </div>
+            <button onclick="simpanKopKeDatabase()" class="w-full py-2.5 bg-brand-navy hover:bg-slate-800 text-white font-bold rounded-xl shadow-md text-xs"><i class="fa-solid fa-floppy-disk text-brand-gold"></i> Simpan Kop Ke Database</button>
+          </div>
+
+          <!-- Section: TTD Penjabat -->
+          <div id="section-ttd" class="space-y-4 hidden">
+            <div class="bg-brand-navy text-white p-3 rounded-xl">
+              <label class="block text-[11px] font-bold uppercase tracking-wider text-brand-blue mb-1">Struktur Posisi TTD</label>
+              <select id="in_mode_ttd" class="w-full px-3 py-1.5 bg-slate-800 border border-slate-700 rounded-lg text-xs outline-none" onchange="ubahModeLayoutTtd(this.value)">
+                <option value="kanan-bawah">Formasi 1: Kanan Bawah (Tunggal)</option>
+                <option value="kanan-kiri">Formasi 2: Kanan & Kiri Berpasangan</option>
+                <option value="segitiga">Formasi 3: Segitiga Pengesahan Atasan</option>
+              </select>
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Frasa Lokasi (Layout Tengah)</label>
+              <input type="text" id="in_ttd_frasa_ditetapkan" class="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-xs outline-none" placeholder="Ditetapkan di / Dikeluarkan di" oninput="updateLivePreview()">
+            </div>
+            <div>
+              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Ruang TTD & Materai</label>
+              <div class="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
+                <div class="flex-1">
+                  <span class="text-[9px] block text-slate-500 mb-1">Tinggi: <span id="val_ttd_height">80</span>px</span>
+                  <input type="range" id="in_ttd_height" min="40" max="200" step="10" value="80" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-blue" oninput="document.getElementById('val_ttd_height').innerText = this.value; updateLivePreview()">
+                </div>
+                <div class="flex flex-col items-center border-l pl-3">
+                  <span class="text-[9px] text-slate-500 mb-1 uppercase">Materai</span>
+                  <label class="relative inline-flex items-center cursor-pointer">
+                    <input type="checkbox" id="in_ttd_materai" class="sr-only peer" onchange="updateLivePreview()">
+                    <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-blue"></div>
+                  </label>
+                </div>
+              </div>
+            </div>
+            <div class="space-y-3 text-xs">
+              <div class="p-3 bg-slate-50 border rounded-xl space-y-1.5">
+                <span class="font-bold text-brand-blue text-[11px] block border-b pb-0.5">Pejabat Kanan (Utama)</span>
+                <input type="text" id="p1_jabatan" class="w-full p-2 border rounded" placeholder="Jabatan" oninput="updateLivePreview()">
+                <input type="text" id="p1_nama" class="w-full p-2 border rounded font-semibold" placeholder="Nama" oninput="updateLivePreview()">
+                <input type="text" id="p1_pangkat" class="w-full p-2 border rounded" placeholder="Pangkat/Golongan" oninput="updateLivePreview()">
+                <input type="text" id="p1_nip" class="w-full p-2 border rounded font-mono text-[11px]" placeholder="NIP" oninput="formatNIPInput(this); updateLivePreview()">
+              </div>
+              <div id="box-form-p2" class="p-3 bg-slate-50 border rounded-xl space-y-1.5 hidden">
+                <span class="font-bold text-slate-600 text-[11px] block border-b pb-0.5">Pejabat Kiri</span>
+                <input type="text" id="p2_frasa" class="w-full p-2 bg-amber-50 border text-slate-700 rounded font-medium" placeholder="Frasa (Menyetujui, dll)" oninput="updateLivePreview()">
+                <input type="text" id="p2_jabatan" class="w-full p-2 border rounded" placeholder="Jabatan" oninput="updateLivePreview()">
+                <input type="text" id="p2_nama" class="w-full p-2 border rounded font-semibold" placeholder="Nama" oninput="updateLivePreview()">
+                <input type="text" id="p2_pangkat" class="w-full p-2 border rounded" placeholder="Pangkat" oninput="updateLivePreview()">
+                <input type="text" id="p2_nip" class="w-full p-2 border rounded font-mono text-[11px]" placeholder="NIP" oninput="formatNIPInput(this); updateLivePreview()">
+              </div>
+              <div id="box-form-p3" class="p-3 bg-slate-50 border rounded-xl space-y-1.5 hidden">
+                <span class="font-bold text-amber-600 text-[11px] block border-b pb-0.5">Atasan Pengesah (Tengah Bawah)</span>
+                <input type="text" id="p3_frasa" class="w-full p-2 bg-amber-50 border text-slate-700 rounded font-medium" placeholder="Frasa (Mengetahui, dll)" oninput="updateLivePreview()">
+                <input type="text" id="p3_jabatan" class="w-full p-2 border rounded" placeholder="Jabatan" oninput="updateLivePreview()">
+                <input type="text" id="p3_nama" class="w-full p-2 border rounded font-semibold" placeholder="Nama" oninput="updateLivePreview()">
+                <input type="text" id="p3_pangkat" class="w-full p-2 border rounded" placeholder="Pangkat" oninput="updateLivePreview()">
+                <input type="text" id="p3_nip" class="w-full p-2 border rounded font-mono text-[11px]" placeholder="NIP" oninput="formatNIPInput(this); updateLivePreview()">
+              </div>
+            </div>
+            <button onclick="simpanTtdKeDatabase()" class="w-full py-2.5 bg-brand-navy hover:bg-slate-800 text-white font-bold rounded-xl shadow-md text-xs"><i class="fa-solid fa-stamp text-brand-gold"></i> Simpan Spesimen Ke Sheet</button>
+          </div>
+
+          <!-- Section: Arsip -->
+          <div id="section-arsip" class="hidden">
+            <div class="bg-brand-navy dark:bg-black text-white p-3 rounded-xl mb-3 flex justify-between items-center">
+              <span class="text-xs font-bold uppercase tracking-wider"><i class="fa-solid fa-server text-brand-blue"></i> Database Surat Keluar</span>
+              <button onclick="muatDataArsip()" class="text-[10px] bg-slate-700 hover:bg-brand-blue px-2 py-1 rounded transition"><i class="fa-solid fa-rotate"></i> Refresh</button>
+            </div>
+            
+            <!-- Search Arsip -->
+            <div class="relative mb-3">
+              <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-slate-400">
+                <i class="fa fa-search text-xs"></i>
+              </span>
+              <input type="text" id="search_arsip" oninput="filterArsip(this.value)" placeholder="Cari nomor, perihal, atau penerima..." class="w-full pl-9 pr-3 py-2.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-brand-blue transition-all" autocomplete="off">
+            </div>
+
+            <div id="kontainer-arsip" class="space-y-2 bg-white dark:bg-slate-900">
+              <div class="text-center text-xs text-slate-400 py-5"><i class="fa-solid fa-circle-notch fa-spin"></i> Memuat data arsip...</div>
+            </div>
+          </div>
+
+        </div>
+
+        <!-- Sticky Form Action -->
+        <div class="p-4 bg-slate-50 dark:bg-slate-950 border-t border-slate-200 dark:border-slate-800 shrink-0">
+          <div id="print-archive-status" class="mb-3 rounded-2xl border border-amber-200 bg-amber-50/90 p-3 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10">
+            <div class="flex items-start gap-3">
+              <div id="print-status-icon" class="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-100">
+                <i class="fa-solid fa-triangle-exclamation text-sm"></i>
+              </div>
+              <div class="min-w-0 flex-1">
+                <div class="flex flex-wrap items-center gap-2">
+                  <span id="print-status-badge" class="inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700 dark:bg-amber-500/20 dark:text-amber-100">ARSIP BELUM SIAP</span>
+                </div>
+                <p id="print-status-text" class="mt-2 text-[11px] leading-relaxed text-slate-600 dark:text-slate-200">Simpan data terlebih dahulu agar surat dapat diverifikasi setelah dicetak.</p>
+              </div>
+            </div>
+          </div>
+          <div class="grid grid-cols-2 gap-3 mb-3">
+            <button onclick="prosesSimpanData()" class="py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl shadow-md text-sm transition-all flex items-center justify-center gap-2">
+              <i class="fa-solid fa-floppy-disk"></i> Simpan Data
+            </button>
+            <button id="btn-cetak-surat" onclick="siapkanDanCetak()" class="py-2.5 bg-brand-blue hover:bg-brand-blue/90 text-white font-bold rounded-xl shadow-md text-sm transition-all flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed" disabled aria-disabled="true" title="Arsipkan surat terlebih dahulu untuk mencetak">
+              <i class="fa fa-print"></i> Cetak Surat
+            </button>
+          </div>
+        </div>
+      </aside>

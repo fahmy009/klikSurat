@@ -1,0 +1,473 @@
+<div id="modal-profile" class="fixed inset-0 z-[100] flex items-center justify-center bg-brand-navy/60 dark:bg-black/80 backdrop-blur-sm hidden">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+      <div class="p-6 border-b border-slate-100 flex justify-between items-center bg-slate-50">
+        <h3 class="font-bold text-brand-navy flex items-center gap-2"><i class="fa fa-user-circle text-brand-blue"></i> Profil & Keamanan</h3>
+        <button onclick="tutupModalProfile()" class="text-slate-400 hover:text-red-500 transition-colors"><i class="fa fa-times text-xl"></i></button>
+      </div>
+      <form onsubmit="event.preventDefault(); simpanProfilBaru();">
+        <div class="p-6 space-y-4">
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Nama Lengkap</label>
+            <input type="text" id="prof_nama" class="w-full px-4 py-2.5 bg-slate-100 dark:bg-slate-800 dark:text-slate-100 border-none rounded-xl text-sm font-semibold focus:ring-2 focus:ring-brand-blue outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Username Baru</label>
+            <input type="text" id="prof_username" class="w-full px-4 py-2.5 bg-slate-100 dark:bg-slate-800 dark:text-slate-100 border-none rounded-xl text-sm font-semibold focus:ring-2 focus:ring-brand-blue outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-bold text-slate-500 mb-1 uppercase tracking-wider">Ganti Password</label>
+            <input type="password" id="prof_password" class="w-full px-4 py-2.5 bg-slate-100 dark:bg-slate-800 dark:text-slate-100 border-none rounded-xl text-sm font-semibold focus:ring-2 focus:ring-brand-blue outline-none" placeholder="Kosongkan jika tidak diubah">
+          </div>
+        </div>
+        <div class="p-6 bg-slate-50 border-t border-slate-100">
+          <button type="submit" class="w-full py-3 bg-brand-navy hover:bg-slate-800 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
+            <i class="fa fa-save"></i> Perbarui Akun
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- Modal Pengaturan Global (App Name & Logos) -->
+  <div id="modal-settings" class="fixed inset-0 z-[100] flex items-center justify-center bg-brand-navy/60 dark:bg-black/80 backdrop-blur-sm hidden">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 flex flex-col md:flex-row h-[85vh] md:h-auto md:max-h-[85vh]">
+      
+      <!-- Sidebar Modal (Tabs) -->
+      <div class="w-full md:w-64 bg-slate-50 dark:bg-slate-800/50 border-r border-slate-100 dark:border-slate-800 p-6 flex flex-col shrink-0">
+        <div class="mb-8">
+          <h3 class="font-black text-brand-navy dark:text-white uppercase tracking-tighter text-lg">Pengaturan</h3>
+          <p class="text-[10px] text-slate-400 font-bold uppercase tracking-widest">Sistem Konfigurasi</p>
+        </div>
+        
+        <nav class="space-y-2 flex-1">
+          <button onclick="switchSettingsTab('umum')" id="set-tab-umum" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-brand-blue text-white shadow-lg shadow-brand-blue/20 transition-all font-bold text-xs uppercase tracking-widest">
+            <i class="fa fa-desktop"></i> Umum
+          </button>
+          <button onclick="switchSettingsTab('data')" id="set-tab-data" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all font-bold text-xs uppercase tracking-widest">
+            <i class="fa fa-database"></i> Database
+          </button>
+          <button onclick="switchSettingsTab('klasifikasi')" id="set-tab-klasifikasi" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all font-bold text-xs uppercase tracking-widest">
+            <i class="fa fa-list-ol"></i> Klasifikasi
+          </button>
+          <button onclick="switchSettingsTab('user')" id="set-tab-user" class="w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all font-bold text-xs uppercase tracking-widest">
+            <i class="fa fa-users-gear"></i> Pengguna
+          </button>
+        </nav>
+
+        <button onclick="tutupModalSettings()" class="mt-auto py-3 text-slate-400 hover:text-rose-500 transition-colors text-xs font-bold uppercase tracking-widest flex items-center justify-center gap-2">
+          <i class="fa fa-times-circle"></i> Tutup Panel
+        </button>
+      </div>
+
+      <!-- Content Area Modal -->
+      <div class="flex-1 flex flex-col min-w-0 bg-white dark:bg-slate-900">
+        <div id="settings-content" class="flex-1 overflow-y-auto p-8">
+          
+          <!-- Tab: Umum -->
+          <div id="set-content-umum" class="space-y-6">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div class="space-y-4">
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Identitas Aplikasi</label>
+                <input type="text" id="in_app_name" class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm font-bold outline-none focus:ring-2 focus:ring-brand-blue" placeholder="Nama Aplikasi">
+                <input type="text" id="in_npsn_sekolah" maxlength="8" class="w-full px-4 py-3 bg-slate-100 dark:bg-slate-800 rounded-xl text-sm font-mono outline-none focus:ring-2 focus:ring-brand-blue" placeholder="NPSN Sekolah">
+              </div>
+              <div class="space-y-4">
+                <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest">Visual & Branding</label>
+                <div class="p-4 bg-slate-50 dark:bg-slate-800 rounded-2xl border border-dashed border-slate-200 space-y-3">
+                  <input type="file" id="file_logo_kiri" accept="image/*" class="hidden" onchange="prosesUnggahLogoKeDrive('left')">
+                  <button onclick="document.getElementById('file_logo_kiri').click()" class="w-full py-2 bg-white dark:bg-slate-700 text-[10px] font-bold rounded-lg border shadow-sm">UPLOAD LOGO KIRI</button>
+                  
+                  <input type="file" id="file_logo_kanan" accept="image/*" class="hidden" onchange="prosesUnggahLogoKeDrive('right')">
+                  <button onclick="document.getElementById('file_logo_kanan').click()" class="w-full py-2 bg-white dark:bg-slate-700 text-[10px] font-bold rounded-lg border shadow-sm">UPLOAD LOGO KANAN</button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Tema Warna Aplikasi -->
+            <div class="pt-4 border-t border-slate-100 dark:border-slate-800">
+              <label class="block text-[10px] font-black text-slate-400 uppercase tracking-widest mb-3">Tema Warna Aplikasi</label>
+              <div class="flex gap-3">
+                <button onclick="changeAccentColor('#0284c7')" class="w-10 h-10 rounded-2xl bg-sky-500 ring-2 ring-offset-2 ring-transparent hover:ring-sky-500 transition-all shadow-lg"></button>
+                <button onclick="changeAccentColor('#10b981')" class="w-10 h-10 rounded-2xl bg-emerald-500 ring-2 ring-offset-2 ring-transparent hover:ring-emerald-500 transition-all shadow-lg"></button>
+                <button onclick="changeAccentColor('#e11d48')" class="w-10 h-10 rounded-2xl bg-rose-500 ring-2 ring-offset-2 ring-transparent hover:ring-rose-500 transition-all shadow-lg"></button>
+                <button onclick="changeAccentColor('#f59e0b')" class="w-10 h-10 rounded-2xl bg-amber-500 ring-2 ring-offset-2 ring-transparent hover:ring-amber-500 transition-all shadow-lg"></button>
+                <button onclick="changeAccentColor('#db2777')" class="w-10 h-10 rounded-2xl bg-pink-500 ring-2 ring-offset-2 ring-transparent hover:ring-pink-500 transition-all shadow-lg"></button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Tab: Database -->
+          <div id="set-content-data" class="space-y-6 hidden">
+            <div class="grid grid-cols-2 gap-4">
+              <button onclick="tutupModalSettings(); bukaModalSiswa('table')" class="p-6 bg-emerald-600/5 hover:bg-emerald-600 text-emerald-600 hover:text-white rounded-[2rem] border border-emerald-100 transition-all flex flex-col items-center gap-3">
+                <i class="fa fa-user-graduate text-2xl"></i>
+                <span class="text-[10px] font-black uppercase tracking-widest">Database Siswa</span>
+              </button>
+              <button onclick="tutupModalSettings(); bukaModalGuru('table')" class="p-6 bg-blue-600/5 hover:bg-blue-600 text-blue-600 hover:text-white rounded-[2rem] border border-blue-100 transition-all flex flex-col items-center gap-3">
+                <i class="fa fa-chalkboard-teacher text-2xl"></i>
+                <span class="text-[10px] font-black uppercase tracking-widest">Database Guru</span>
+              </button>
+            </div>
+            <div class="p-6 bg-slate-50 dark:bg-slate-800 rounded-[2rem] space-y-4">
+              <div class="flex items-center justify-between border-b pb-2">
+                <label class="text-[10px] font-black text-slate-400 uppercase tracking-widest">Master Template Surat</label>
+                <div class="flex gap-2 text-[9px] font-bold">
+                  <button onclick="eksporTemplates()" class="px-3 py-1 bg-white rounded-lg border">EKSPOR</button>
+                  <button onclick="triggerImporTemplates()" class="px-3 py-1 bg-white rounded-lg border">IMPOR</button>
+                </div>
+              </div>
+              <div id="settings-template-list" class="max-h-48 overflow-y-auto space-y-1"></div>
+            </div>
+          </div>
+
+          <!-- Tab: Klasifikasi -->
+          <div id="set-content-klasifikasi" class="space-y-4 hidden">
+             <div class="flex gap-2">
+               <input type="text" id="in_kode_baru" placeholder="Kode" class="w-24 px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold">
+               <input type="text" id="in_nama_kode_baru" placeholder="Nama Klasifikasi" class="flex-1 px-4 py-2 bg-slate-100 dark:bg-slate-800 rounded-xl text-xs font-bold">
+               <button onclick="tambahKodeKlasifikasiBaru()" class="px-4 py-2 bg-brand-navy text-white rounded-xl"><i class="fa fa-plus"></i></button>
+             </div>
+             <div id="daftar-kode-klasifikasi" class="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-64 overflow-y-auto pt-2"></div>
+          </div>
+
+          <!-- Tab: Manajemen Pengguna -->
+          <div id="set-content-user" class="space-y-6 hidden">
+            <div class="p-6 bg-slate-50 dark:bg-slate-800 rounded-[2rem] border border-slate-100 dark:border-slate-700">
+              <h4 class="text-[10px] font-black text-brand-blue uppercase tracking-widest mb-4">Tambah / Edit Pengguna</h4>
+              <form id="form-mgmt-user" class="grid grid-cols-2 gap-3" onsubmit="event.preventDefault(); simpanUserBaruAdmin();">
+                <input type="text" name="Username" placeholder="Username" class="px-4 py-2 bg-white dark:bg-slate-900 rounded-xl text-xs font-bold outline-none border" required>
+                <input type="password" name="Password" placeholder="Password" class="px-4 py-2 bg-white dark:bg-slate-900 rounded-xl text-xs font-bold outline-none border" required>
+                <input type="text" name="Nama_Lengkap" placeholder="Nama Lengkap" class="px-4 py-2 bg-white dark:bg-slate-900 rounded-xl text-xs font-bold outline-none border" required>
+                <select name="Role" class="px-4 py-2 bg-white dark:bg-slate-900 rounded-xl text-xs font-bold outline-none border">
+                  <option value="Guru">Guru (Pembuat Surat)</option>
+                  <option value="Operator Utama">Operator Utama (Admin)</option>
+                </select>
+                <button type="submit" class="col-span-2 py-2.5 bg-brand-navy text-white rounded-xl text-[10px] font-bold uppercase tracking-widest">Simpan Data Pengguna</button>
+              </form>
+            </div>
+            
+            <div class="border rounded-2xl overflow-hidden bg-white dark:bg-slate-900 shadow-sm">
+              <table class="w-full text-left text-[10px]">
+                <thead class="bg-slate-50 dark:bg-slate-800 border-b">
+                  <tr>
+                    <th class="p-3">Username</th>
+                    <th class="p-3">Nama</th>
+                    <th class="p-3">Role</th>
+                    <th class="p-3 text-right">Aksi</th>
+                  </tr>
+                </thead>
+                <tbody id="tabel-user-body" class="divide-y">
+                  <!-- Diisi oleh JS -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+        </div>
+
+        <div class="p-8 bg-slate-50 dark:bg-slate-800/50 border-t border-slate-100 dark:border-slate-800">
+          <button onclick="simpanSettingsUmum()" class="w-full py-4 bg-brand-blue hover:bg-brand-blue/90 text-white font-black rounded-3xl shadow-xl transition-all flex items-center justify-center gap-2 uppercase tracking-widest text-xs">
+          <i class="fa fa-save"></i> Simpan Perubahan Global
+        </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Pemotong Logo (Cropper) -->
+  <div id="modal-cropper" class="fixed inset-0 z-[110] flex items-center justify-center bg-brand-navy/80 backdrop-blur-md hidden">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300">
+      <div class="p-4 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+        <h3 class="font-bold text-brand-navy dark:text-slate-100 flex items-center gap-2"><i class="fa fa-crop text-brand-blue"></i> Sesuaikan Ukuran Logo</h3>
+        <button onclick="tutupModalCropper()" class="text-slate-400 hover:text-red-500 transition-colors"><i class="fa fa-times text-xl"></i></button>
+      </div>
+      <div class="p-6 bg-slate-200 dark:bg-slate-950">
+        <div class="max-h-[60vh] overflow-hidden rounded-xl border-2 border-dashed border-slate-400 dark:border-slate-700">
+          <img id="image-to-crop" class="block max-w-full">
+        </div>
+      </div>
+      <div class="p-6 bg-slate-50 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 flex gap-3">
+        <button onclick="tutupModalCropper()" class="flex-1 py-3 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-300 transition-all">Batal</button>
+        <button id="btn-do-crop" class="flex-1 py-3 bg-brand-blue hover:bg-brand-blue/90 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
+          <i class="fa fa-check-circle"></i> Potong & Unggah
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Manajemen Data Siswa -->
+  <div id="modal-siswa" class="fixed inset-0 z-[100] flex items-center justify-center bg-brand-navy/60 dark:bg-black/80 backdrop-blur-sm hidden">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 flex flex-col max-h-[90vh]">
+      <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+        <div>
+          <h3 class="font-bold text-brand-navy dark:text-white flex items-center gap-2 text-lg"><i class="fa fa-user-graduate text-brand-blue"></i> Form Input Data Siswa</h3>
+          <p class="text-[10px] text-slate-500 uppercase tracking-widest font-bold">Lengkapi data untuk otomatisasi variabel surat</p>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="downloadFormatSiswaExcel()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-bold uppercase transition-all flex items-center gap-1 border border-slate-200" title="Unduh Format Excel untuk Impor">
+            <i class="fa fa-download"></i> Format
+          </button>
+          <button onclick="eksporDataSiswaExcel()" class="px-3 py-1.5 bg-emerald-50 hover:bg-emerald-100 text-emerald-600 rounded-xl text-[10px] font-bold uppercase transition-all flex items-center gap-1 border border-emerald-100">
+            <i class="fa fa-file-excel"></i> Ekspor Excel
+          </button>
+          <button onclick="document.getElementById('input_impor_siswa').click()" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl text-[10px] font-bold uppercase transition-all flex items-center gap-1 border border-blue-100">
+            <i class="fa fa-upload"></i> Impor Excel
+          </button>
+          <input type="file" id="input_impor_siswa" class="hidden" accept=".xlsx, .xls" onchange="handleImporSiswaExcel(event)">
+        </div>
+        <button onclick="tutupModalSiswa()" class="text-slate-400 hover:text-red-500 transition-colors"><i class="fa fa-times text-xl"></i></button>
+      </div>
+      
+      <!-- Navigasi Internal Modal -->
+      <div class="px-6 py-2 bg-slate-100/50 border-b border-slate-100 flex gap-4 text-xs font-bold">
+        <button id="tab-siswa-form-btn" onclick="switchTabSiswa('form')" class="py-2 border-b-2 border-brand-blue text-brand-blue transition-all">FORM INPUT DATA</button>
+        <button id="tab-siswa-table-btn" onclick="switchTabSiswa('table')" class="py-2 border-b-2 border-transparent text-slate-400 hover:text-slate-600 transition-all">DAFTAR SELURUH SISWA</button>
+      </div>
+
+      <div id="siswa-tab-form" class="flex-1 overflow-y-auto p-6">
+      <form id="form-siswa" onsubmit="event.preventDefault(); simpanDataSiswa();">
+        <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <!-- Group 1: Identitas -->
+          <div class="space-y-4 col-span-1">
+            <h4 class="text-[11px] font-black text-brand-blue uppercase border-b pb-1">Identitas Dasar</h4>
+            <input type="text" name="Nama" placeholder="Nama Lengkap" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-blue" required>
+            <div class="grid grid-cols-2 gap-2">
+              <input type="text" name="NIS" placeholder="NIS" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+              <input type="text" name="NISN" placeholder="NISN" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm" required>
+            </div>
+            <div class="grid grid-cols-2 gap-2">
+              <input type="text" name="Tempat_Lahir" placeholder="Tempat Lahir" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+              <input type="date" name="Tanggal_Lahir" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+            </div>
+            <input type="text" name="Kelas" placeholder="Kelas (Contoh: VI-A)" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+            <input type="text" name="Tahun_Ajaran" placeholder="Tahun Ajaran" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+          </div>
+
+          <!-- Group 2: Orang Tua & PIP -->
+          <div class="space-y-4 col-span-1">
+            <h4 class="text-[11px] font-black text-amber-600 uppercase border-b pb-1">Keluarga & Bantuan</h4>
+            <input type="text" name="Nama_Ayah" placeholder="Nama Ayah" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+            <input type="text" name="Nama_Ibu" placeholder="Nama Ibu" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+            <div class="p-3 bg-amber-50 dark:bg-amber-900/10 rounded-xl space-y-2 border border-amber-100">
+              <input type="text" name="VA_PIP" placeholder="Virtual Account PIP" class="w-full px-3 py-2 bg-white border rounded-lg text-xs">
+              <input type="text" name="Rek_PIP" placeholder="Nomor Rekening PIP" class="w-full px-3 py-2 bg-white border rounded-lg text-xs">
+            </div>
+            <h4 class="text-[11px] font-black text-rose-600 uppercase border-b pb-1 mt-4">Kelulusan</h4>
+            <input type="text" name="Nomor_Ijazah" placeholder="Nomor Ijazah" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+            <select name="Ket_Lulus" onchange="handleKetLulusChange(this)" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+              <option value="LULUS">LULUS</option>
+              <option value="TIDAK LULUS">TIDAK LULUS</option>
+              <option value="BELUM LULUS / MASIH AKTIF">BELUM LULUS / MASIH AKTIF</option>
+            </select>
+          </div>
+
+          <!-- Group 3: Nilai (1-10) -->
+          <div class="space-y-2 col-span-1 bg-slate-50 dark:bg-slate-800 p-4 rounded-2xl border">
+            <h4 class="text-[11px] font-black text-emerald-600 uppercase border-b pb-1 mb-3">Nilai Mata Pelajaran</h4>
+            <div class="grid grid-cols-2 gap-2 max-h-64 overflow-y-auto pr-2">
+              <script>
+                const mapelNames = [
+                  "Pendidikan Agama dan Budi Pekerti",
+                  "Pendidikan Pancasila",
+                  "Bahasa Indonesia",
+                  "Matematika",
+                  "Ilmu Pengetahuan Alam dan Sosial",
+                  "Pendidikan Jasmani, Olahraga, dan Kesehatan",
+                  "Seni dan Budaya",
+                  "Bahasa Inggris",
+                  "Bahasa Madura",
+                  "Baca Tulis Al Quran (BTA)"
+                ];
+                for(let i=0; i<mapelNames.length; i++) {
+                  document.write(`<div class="space-y-1"><label class="text-[9px] font-bold text-slate-400 leading-tight">${mapelNames[i]}</label><input type="number" step="0.01" name="${mapelNames[i]}" class="w-full px-3 py-1.5 border rounded-lg text-xs outline-none focus:ring-1 focus:ring-emerald-500"></div>`);
+                }
+              </script>
+            </div>
+          </div>
+        </div>
+      </form>
+      </div>
+
+      <!-- Tab Daftar Siswa (Tabel) -->
+      <div id="siswa-tab-table" class="flex-1 overflow-y-auto p-6 hidden">
+        <div class="mb-4 relative">
+          <input type="text" oninput="filterTabelSiswa(this.value)" placeholder="Cari di tabel (Nama, NISN, atau Kelas)..." class="w-full pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-blue">
+          <i class="fa fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+        </div>
+        <div class="border rounded-2xl overflow-hidden shadow-sm bg-white">
+          <table class="w-full text-left border-collapse">
+            <thead class="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b">
+              <tr>
+                <th class="p-3">Nama Siswa</th>
+                <th class="p-3">NISN</th>
+                <th class="p-3">Kelas</th>
+                <th class="p-3">Status</th>
+                <th class="p-3 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="tabel-siswa-body" class="divide-y divide-slate-50">
+              <!-- Baris data diisi oleh JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div class="p-6 bg-slate-100 dark:bg-slate-800/50 border-t border-slate-200 dark:border-slate-800 flex gap-4">
+        <button type="button" id="btn-hapus-siswa" onclick="hapusDataSiswa()" class="flex-1 py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-2xl border border-rose-100 shadow-sm transition-all flex items-center justify-center gap-2 hidden">
+          <i class="fa fa-trash"></i> Hapus
+        </button>
+        <button type="button" onclick="simpanDataSiswa()" class="flex-[3] py-3 bg-brand-blue hover:bg-brand-blue/90 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2">
+          <i class="fa fa-save"></i> Simpan Data Siswa
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Manajemen Data Guru -->
+  <div id="modal-guru" class="fixed inset-0 z-[100] flex items-center justify-center bg-brand-navy/60 dark:bg-black/80 backdrop-blur-sm hidden">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-4xl rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 flex flex-col max-h-[90vh]">
+      <div class="p-6 border-b border-slate-100 dark:border-slate-800 flex justify-between items-center bg-slate-50 dark:bg-slate-800/50">
+        <div>
+          <h3 class="font-bold text-brand-navy dark:text-white flex items-center gap-2 text-lg"><i class="fa fa-chalkboard-teacher text-brand-blue"></i> Form Input Data Guru</h3>
+        </div>
+        <div class="flex gap-2">
+          <button onclick="downloadFormatGuruExcel()" class="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 text-slate-600 rounded-xl text-[10px] font-bold uppercase transition-all flex items-center gap-1 border border-slate-200">
+            <i class="fa fa-download"></i> Format
+          </button>
+          <button onclick="eksporDataGuruExcel()" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl text-[10px] font-bold uppercase transition-all flex items-center gap-1 border border-blue-100">
+            <i class="fa fa-file-excel"></i> Ekspor
+          </button>
+          <button onclick="document.getElementById('input_impor_guru').click()" class="px-3 py-1.5 bg-blue-50 hover:bg-blue-100 text-blue-600 rounded-xl text-[10px] font-bold uppercase transition-all flex items-center gap-1 border border-blue-100">
+            <i class="fa fa-upload"></i> Impor
+          </button>
+          <input type="file" id="input_impor_guru" class="hidden" accept=".xlsx, .xls" onchange="handleImporGuruExcel(event)">
+        </div>
+        <button onclick="tutupModalGuru()" class="text-slate-400 hover:text-red-500 transition-colors"><i class="fa fa-times text-xl"></i></button>
+      </div>
+      
+      <!-- Navigasi Internal Modal Guru -->
+      <div class="px-6 py-2 bg-slate-100/50 border-b border-slate-100 flex gap-4 text-xs font-bold">
+        <button id="tab-guru-form-btn" onclick="switchTabGuru('form')" class="py-2 border-b-2 border-brand-blue text-brand-blue transition-all">FORM INPUT DATA</button>
+        <button id="tab-guru-table-btn" onclick="switchTabGuru('table')" class="py-2 border-b-2 border-transparent text-slate-400 hover:text-slate-600 transition-all">DAFTAR SELURUH GURU</button>
+      </div>
+
+      <div id="guru-tab-form" class="flex-1 overflow-y-auto p-6">
+      <form id="form-guru" onsubmit="event.preventDefault(); simpanDataGuru();">
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <div class="space-y-4">
+            <h4 class="text-[11px] font-black text-brand-blue uppercase border-b pb-1">Identitas & Kepegawaian</h4>
+            <input type="text" name="Nama" placeholder="Nama Lengkap & Gelar" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-blue" required>
+            <div class="grid grid-cols-2 gap-2">
+              <input type="text" name="NIP" placeholder="NIP" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm" required>
+              <input type="text" name="NUPTK" placeholder="NUPTK" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+            </div>
+            <input type="text" name="Jabatan" placeholder="Jabatan (Guru Kelas / Mapel)" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+            <input type="text" name="Pangkat_Golongan" placeholder="Pangkat / Golongan" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+          </div>
+          <div class="space-y-4">
+            <h4 class="text-[11px] font-black text-emerald-600 uppercase border-b pb-1">Tugas & Unit Kerja</h4>
+            <input type="text" name="Unit_Kerja" placeholder="Unit Kerja" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+            <input type="text" name="Tugas_Utama" placeholder="Tugas Utama" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+            <input type="text" name="Tugas_Tambahan" placeholder="Tugas Tambahan" class="w-full px-4 py-2 bg-slate-50 border rounded-xl text-sm">
+          </div>
+        </div>
+      </form>
+      </div>
+
+      <!-- Tab Daftar Guru (Tabel) -->
+      <div id="guru-tab-table" class="flex-1 overflow-y-auto p-6 hidden">
+        <div class="mb-4 relative">
+          <input type="text" oninput="filterTabelGuru(this.value)" placeholder="Cari di tabel (Nama atau NIP)..." class="w-full pl-10 pr-4 py-2 bg-slate-100 border-none rounded-xl text-sm outline-none focus:ring-2 focus:ring-brand-blue">
+          <i class="fa fa-search absolute left-4 top-1/2 -translate-y-1/2 text-slate-400 text-xs"></i>
+        </div>
+        <div class="border rounded-2xl overflow-hidden shadow-sm bg-white">
+          <table class="w-full text-left border-collapse">
+            <thead class="bg-slate-50 text-[10px] font-black text-slate-500 uppercase tracking-widest border-b">
+              <tr>
+                <th class="p-3">Nama Guru</th>
+                <th class="p-3">NIP</th>
+                <th class="p-3">Jabatan</th>
+                <th class="p-3 text-right">Aksi</th>
+              </tr>
+            </thead>
+            <tbody id="tabel-guru-body" class="divide-y divide-slate-50">
+              <!-- Baris data diisi oleh JS -->
+            </tbody>
+          </table>
+        </div>
+      </div>
+      
+      <div class="p-6 bg-slate-100 dark:bg-slate-800/50 border-t border-slate-200 flex gap-4">
+        <button type="button" id="btn-hapus-guru" onclick="hapusDataGuru()" class="flex-1 py-3 bg-rose-50 hover:bg-rose-100 text-rose-600 font-bold rounded-2xl border border-rose-100 hidden">
+          <i class="fa fa-trash"></i> Hapus
+        </button>
+        <button type="button" onclick="simpanDataGuru()" class="flex-[3] py-3 bg-brand-blue hover:bg-brand-blue/90 text-white font-bold rounded-2xl shadow-lg transition-all flex items-center justify-center gap-2">
+          <i class="fa fa-save"></i> Simpan Data Guru
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal Tentang Aplikasi (About) -->
+  <div id="modal-about" class="fixed inset-0 z-[120] flex items-center justify-center bg-slate-900/80 backdrop-blur-md hidden">
+    <div class="bg-white dark:bg-slate-900 w-full max-w-md rounded-[2.5rem] shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-300 border border-white/20">
+      <div class="relative h-32 bg-gradient-to-br from-brand-navy to-brand-blue flex items-center justify-center overflow-hidden">
+        <div class="absolute inset-0 opacity-10 bg-[url('https://www.transparenttextures.com/patterns/carbon-fibre.png')]"></div>
+        <div class="relative z-10 text-center">
+          <h3 class="text-white font-black text-xl tracking-tighter uppercase">Tentang Aplikasi</h3>
+          <p class="text-emerald-400 text-[10px] font-bold tracking-[0.3em] uppercase mt-1">Version 4.0 Stable</p>
+        </div>
+        <button onclick="tutupModalAbout()" class="absolute top-5 right-5 text-white/50 hover:text-white transition-colors"><i class="fa fa-times-circle text-2xl"></i></button>
+      </div>
+
+      <div class="p-8 space-y-6">
+        <div class="space-y-3">
+          <h4 class="text-[10px] font-black text-slate-400 uppercase tracking-widest border-b pb-1">Sistem Engine</h4>
+          <div class="flex flex-wrap gap-2">
+            <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-[9px] font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">Google Apps Script</span>
+            <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-[9px] font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">Tailwind CSS 3.4</span>
+            <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-[9px] font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">TinyMCE 7</span>
+            <span class="px-3 py-1 bg-slate-100 dark:bg-slate-800 rounded-full text-[9px] font-bold text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700">Cloud Storage API</span>
+          </div>
+        </div>
+
+        <div class="p-5 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-100 dark:border-slate-800 relative group">
+          <div class="flex items-center gap-4">
+            <div class="w-12 h-12 rounded-2xl bg-brand-navy flex items-center justify-center text-white shadow-lg overflow-hidden border-2 border-white dark:border-slate-700">
+               <i class="fa fa-code text-xl text-emerald-400"></i>
+            </div>
+            <div>
+              <h5 class="text-sm font-black text-slate-800 dark:text-white uppercase tracking-tight">Muhammad Fahmy</h5>
+              <p class="text-[10px] text-slate-500 font-medium">Software Engineer & Developer</p>
+            </div>
+          </div>
+          
+          <div class="grid grid-cols-5 gap-2 mt-5">
+            <a href="https://wa.me/6282330750358" target="_blank" class="flex h-9 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-600 hover:bg-emerald-500 hover:text-white transition-all shadow-sm" title="WhatsApp">
+              <i class="fa-brands fa-whatsapp text-lg"></i>
+            </a>
+            <a href="https://www.facebook.com/muhammadfahmy009/" target="_blank" class="flex h-9 items-center justify-center rounded-xl bg-blue-600/10 text-blue-600 hover:bg-blue-600 hover:text-white transition-all shadow-sm" title="Facebook">
+              <i class="fa-brands fa-facebook-f text-lg"></i>
+            </a>
+            <a href="https://www.instagram.com/fahmy082" target="_blank" class="flex h-9 items-center justify-center rounded-xl bg-pink-600/10 text-pink-600 hover:bg-pink-600 hover:text-white transition-all shadow-sm" title="Instagram">
+              <i class="fa-brands fa-instagram text-lg"></i>
+            </a>
+            <a href="https://www.tiktok.com/@muhammadfahmyan" target="_blank" class="flex h-9 items-center justify-center rounded-xl bg-slate-900/10 dark:bg-white/10 text-slate-900 dark:text-white hover:bg-slate-900 hover:text-white dark:hover:bg-white dark:hover:text-black transition-all shadow-sm" title="TikTok">
+              <i class="fa-brands fa-tiktok text-lg"></i>
+            </a>
+            <a href="https://www.youtube.com/@muhammadfahmy009" target="_blank" class="flex h-9 items-center justify-center rounded-xl bg-red-600/10 text-red-600 hover:bg-red-600 hover:text-white transition-all shadow-sm" title="YouTube">
+              <i class="fa-brands fa-youtube text-lg"></i>
+            </a>
+          </div>
+        </div>
+
+        <div class="text-center">
+          <p class="text-[9px] text-slate-400 font-bold uppercase tracking-widest">Aplikasi ini dirancang khusus untuk</p>
+          <p id="about-app-for" class="text-[10px] text-brand-blue font-black uppercase mt-1">SD Negeri Mojogemi 02 Sukowono</p>
+        </div>
+      </div>
+      <div class="p-4 bg-slate-50 dark:bg-slate-800/30 text-center border-t border-slate-100 dark:border-slate-800 text-[8px] text-slate-400 uppercase tracking-widest">
+        &copy; 2026 <span id="about-app-engine-name">KlikSurat Engine</span> &bull; All Rights Reserved
+      </div>
+    </div>
+  </div>

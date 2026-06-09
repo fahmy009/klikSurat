@@ -1,0 +1,585 @@
+<style>
+    :root { --brand-color: #0284c7; }
+
+    /* Perbaikan Visual untuk Editor TinyMCE agar menyatu dengan Tema */
+    .tox-tinymce { border-radius: 0.75rem !important; border-color: rgb(226 232 240) !important; }
+    .dark .tox-tinymce { border-color: rgb(51 65 85) !important; }
+
+    .preview-rich-content {
+      min-height: 0;
+      padding: 0;
+      font-size: inherit;
+      line-height: inherit !important;
+      white-space: pre-wrap; /* Penting: Agar tabulasi/spasi ganda muncul */
+      tab-size: 4;
+      -moz-tab-size: 4;
+      background: transparent;
+      color: inherit;
+    }
+
+    /* Memastikan Tabel di Preview terlihat rapi */
+    .preview-rich-content table { border-collapse: collapse; width: 100%; margin-bottom: 1em; }
+    .preview-rich-content table td, .preview-rich-content table th { padding: 4px 8px; border: 1px solid black; }
+    
+    /* Sembunyikan border jika diatur 'None' atau '0' di TinyMCE */
+    .preview-rich-content table[border="0"] td,
+    .preview-rich-content table[border="0"] th,
+    .preview-rich-content table[style*="border-width: 0px"] td,
+    .preview-rich-content table[style*="border-width: 0px"] th,
+    .preview-rich-content table[style*="border: 0px"] td,
+    .preview-rich-content table[style*="border: 0px"] th,
+    .preview-rich-content table[style*="border-style: none"] td,
+    .preview-rich-content table[style*="border-style: none"] th { 
+        border: none !important; 
+    }
+
+    .preview-rich-content p,
+    .preview-rich-content ol,
+    .preview-rich-content ul,
+    .preview-rich-content pre,
+    .preview-rich-content blockquote,
+    .preview-rich-content h1,
+    .preview-rich-content h2,
+    .preview-rich-content h3,
+    .preview-rich-content h4,
+    .preview-rich-content h5,
+    .preview-rich-content h6 {
+      margin: 0;
+      padding: 0;
+    }
+
+    .preview-rich-content ul,
+    .preview-rich-content ol {
+      padding-left: 3em; /* Menyesuaikan dengan standar indentasi Quill */
+      margin: 0.5em 0;
+      list-style-position: outside;
+      list-style-type: inherit;
+    }
+
+    .preview-rich-content ul > li,
+    .preview-rich-content ol > li {
+      position: relative;
+      margin: 0.2em 0;
+      padding-left: 0.5em;
+    }
+
+    /* Hapus penanda custom jika sudah menggunakan list-style-type inherit */
+    .preview-rich-content ul > li::before,
+    .preview-rich-content ol > li::before {
+      display: none !important;
+    }
+
+    .preview-rich-content ol {
+      counter-reset: preview-list-counter;
+    }
+
+    .preview-rich-content ol > li {
+      counter-increment: preview-list-counter;
+    }
+
+    .preview-rich-content ol > li::before {
+      content: counter(preview-list-counter, decimal) '. ';
+      position: absolute;
+      left: 0;
+      top: 0;
+    }
+
+    .preview-rich-content blockquote {
+      border-left: 3px solid #cbd5e1;
+      margin: 0.75em 0;
+      padding-left: 0.85em;
+    }
+
+    .preview-rich-content pre {
+      white-space: pre-wrap;
+      background: #f8fafc;
+      border-radius: 0.5rem;
+      padding: 0.75em 1em;
+      margin: 0.75em 0;
+    }
+
+    .preview-rich-content a {
+      text-decoration: underline;
+      color: inherit;
+    }
+
+    .preview-rich-content .ql-align-center {
+      text-align: center;
+    }
+
+    .preview-rich-content .ql-align-right {
+      text-align: right;
+    }
+
+    .preview-rich-content .ql-align-justify {
+      text-align: justify;
+    }
+
+    /* Perbaikan Indentasi Quill per Level */
+    .preview-rich-content .ql-indent-1 { padding-left: 3em; text-indent: 0; }
+    .preview-rich-content .ql-indent-2 { padding-left: 6em; text-indent: 0; }
+    .preview-rich-content .ql-indent-3 { padding-left: 9em; text-indent: 0; }
+    .preview-rich-content .ql-indent-4 { padding-left: 12em; text-indent: 0; }
+    .preview-rich-content .ql-indent-5 { padding-left: 15em; text-indent: 0; }
+    .preview-rich-content .ql-indent-6 { padding-left: 18em; text-indent: 0; }
+    .preview-rich-content .ql-indent-7 { padding-left: 21em; text-indent: 0; }
+    .preview-rich-content .ql-indent-8 { padding-left: 24em; text-indent: 0; }
+    
+    html, body {
+      height: 100%;
+      overflow: hidden;
+    }
+
+    body {
+      min-height: 100vh;
+    }
+    
+    /* Animasi transisi warna global yang sangat halus */
+    *, *::before, *::after {
+      transition-property: background-color, border-color, color, fill, stroke, box-shadow;
+      transition-duration: 500ms;
+      transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+    }
+
+    /* Mencegah konflik pada elemen yang memiliki animasi rotasi/spin */
+    .animate-spin, .fa-spin, .transition-none { transition: none !important; }
+
+    /* Animasi Kursor Ketik */
+    .typing-cursor::after {
+      content: '|';
+      margin-left: 2px;
+      color: var(--brand-color);
+      font-weight: bold;
+      animation: blink 0.8s infinite;
+    }
+    @keyframes blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+    /* SKELETON LOADING ANIMATION */
+    .skeleton-box {
+      background: linear-gradient(90deg, rgba(226, 232, 240, 0.5) 25%, rgba(203, 213, 225, 0.8) 50%, rgba(226, 232, 240, 0.5) 75%);
+      background-size: 200% 100%;
+      animation: skeleton-pulse 1.5s infinite ease-in-out;
+    }
+    .dark .skeleton-box { background: linear-gradient(90deg, rgba(30, 41, 59, 0.5) 25%, rgba(51, 65, 85, 0.8) 50%, rgba(30, 41, 59, 0.5) 75%); }
+    @keyframes skeleton-pulse { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    /* GOOGLE DOCS STYLE PAGINATION ENGINE - REFINED */
+    #print-area {
+      background: transparent;
+      box-shadow: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center; 
+      justify-content: flex-start;
+      min-height: auto;
+      gap: 20px;
+      padding-bottom: 72px;
+    }
+    
+    /* Perbaikan scaling container untuk mobile */
+    #preview-pane {
+      overflow-x: hidden !important;
+    }
+
+    #preview-pane {
+      overscroll-behavior: contain;
+      scroll-behavior: smooth;
+      scrollbar-gutter: stable;
+    }
+
+    .page-sheet {
+      background: white;
+      box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
+      position: relative;
+      box-sizing: border-box;
+      overflow: hidden;
+      flex-shrink: 0;
+      margin-bottom: 10px;
+    }
+
+    .page-sheet.page-enter {
+      animation: pageEnter 320ms cubic-bezier(0.22, 1, 0.36, 1);
+    }
+
+    @keyframes pageEnter {
+      from {
+        opacity: 0;
+        transform: translateY(26px) scale(0.985);
+        box-shadow: 0 18px 35px -18px rgb(15 23 42 / 0.45);
+      }
+      to {
+        opacity: 1;
+        transform: translateY(0) scale(1);
+      }
+    }
+
+    .size-a4 {
+      width: 210mm; 
+      height: 297mm;
+    }
+    .size-f4 {
+      width: 215mm; 
+      height: 330mm;
+    }
+    
+    .font-serif-official { font-family: 'Times New Roman', Times, serif; }
+    .font-sans-inter { font-family: 'Inter', sans-serif; }
+    .font-sans-classic { font-family: 'Arial', 'Helvetica', sans-serif; }
+    
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 10px; }
+
+    /* Pastikan semua elemen di dalam print-area tidak melampaui batas margin (menabrak) */
+    #print-area * {
+      overflow-wrap: break-word !important;
+      word-wrap: break-word !important;
+    }
+
+    .content-wrapper p {
+      orphans: 3;
+      widows: 3;
+    }
+
+    .content-wrapper table {
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    /* CSS ATURAN CETAK PRINTER */
+    @media print {
+      html, body { background: white !important; padding: 0 !important; margin: 0 !important; width: 100% !important; height: auto !important; overflow: visible !important; }
+      body * { visibility: hidden !important; }
+      #print-area, #print-area * { visibility: visible !important; }
+      header, aside, #toast-container, #loading, #page-counter, #login-page, #verification-page { display: none !important; }
+      #main-dashboard,
+      #main-dashboard > div {
+        display: block !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+      }
+      main { 
+        display: block !important;
+        position: static !important;
+        padding: 0 !important;
+        margin: 0 !important;
+        background: white !important;
+        width: 100% !important;
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+      }
+      #print-area {
+        display: block !important;
+        position: absolute !important;
+        top: 0 !important;
+        left: 0 !important;
+        gap: 0 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+        width: var(--sheet-width) !important;
+        height: auto !important;
+        overflow: visible !important;
+      }
+      .page-sheet {
+        visibility: visible !important;
+        box-shadow: none !important;
+        break-after: page !important;
+        page-break-after: always !important;
+        break-inside: auto !important;
+        page-break-inside: auto !important;
+        display: block !important;
+        margin: 0 !important;
+        border: none !important;
+        overflow: hidden !important;
+        animation: none !important;
+        transform: none !important;
+        /* Paksa ukuran fisik agar printer tidak melakukan scaling otomatis */
+        width: var(--sheet-width) !important;
+        height: var(--sheet-height) !important;
+      }
+      .page-sheet:last-child {
+        break-after: auto !important;
+        page-break-after: auto !important;
+      }
+      .content-wrapper {
+        height: var(--inner-height) !important;
+        overflow: hidden !important;
+      }
+    }
+
+    /* Global SweetAlert2 Styling */
+    .swal2-popup { border-radius: 2rem !important; font-family: 'Plus Jakarta Sans', sans-serif !important; padding: 2rem !important; border: 1px solid #f1f5f9 !important; background: #ffffff !important; }
+    .dark .swal2-popup { background: #1e293b !important; border-color: #334155 !important; }
+    .swal2-title { font-weight: 800 !important; color: #0f172a !important; letter-spacing: -0.025em !important; }
+    .dark .swal2-title { color: #f1f5f9 !important; }
+    .swal2-html-container { color: #64748b !important; line-height: 1.6 !important; font-size: 0.95rem !important; }
+    .dark .swal2-html-container { color: #94a3b8 !important; }
+    .swal2-styled.swal2-confirm { border-radius: 1rem !important; font-weight: 700 !important; padding: 0.8rem 2rem !important; font-size: 0.875rem !important; text-transform: uppercase; tracking: 0.05em; background-color: var(--brand-color) !important; }
+    .swal2-styled.swal2-cancel { border-radius: 1rem !important; font-weight: 700 !important; padding: 0.8rem 2rem !important; font-size: 0.875rem !important; text-transform: uppercase; tracking: 0.05em; }
+    .swal2-icon { border-width: 3px !important; }
+    
+    /* SweetAlert Input Minimalism */
+    .swal2-input, .swal2-textarea, .swal2-select {
+      background-color: #f8fafc !important; border: 2px solid #f1f5f9 !important; border-radius: 1.25rem !important;
+      font-size: 1rem !important; color: #1e293b !important; box-shadow: none !important;
+      padding: 1rem 1.5rem !important; margin: 1.5rem auto 0 !important; transition: all 0.2s ease !important;
+      width: 100% !important; box-sizing: border-box !important; height: auto !important;
+    }
+    .dark .swal2-input, .dark .swal2-textarea, .dark .swal2-select { background-color: #0f172a !important; border-color: #334155 !important; color: #f1f5f9 !important; }
+    .swal2-input:focus, .swal2-textarea:focus, .swal2-select:focus { border-color: var(--brand-color) !important; box-shadow: 0 0 0 4px rgba(2, 132, 199, 0.1) !important; outline: none !important; }
+
+    /* Menyembunyikan Warning Banner Google Apps Script */
+    #warning, .warning-bar, .warning-banner-bar, .warning-banner {
+      display: none !important;
+    }
+
+    /* Theme polish: membuat light/dark terasa konsisten di seluruh dashboard */
+    body {
+      background:
+        radial-gradient(circle at top left, rgba(14, 165, 233, 0.10), transparent 32rem),
+        linear-gradient(135deg, #f8fafc 0%, #eef2f7 48%, #f8fafc 100%);
+    }
+
+    .dark body {
+      background:
+        radial-gradient(circle at top left, rgba(14, 165, 233, 0.14), transparent 30rem),
+        linear-gradient(135deg, #020617 0%, #0f172a 52%, #111827 100%);
+    }
+
+    #main-dashboard > header {
+      background: linear-gradient(135deg, #0f172a 0%, #111827 54%, var(--brand-color) 150%) !important;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+    }
+
+    aside {
+      background: rgba(255, 255, 255, 0.94) !important;
+      border-color: rgba(203, 213, 225, 0.85) !important;
+      box-shadow: 18px 0 45px -34px rgba(15, 23, 42, 0.45);
+    }
+
+    .dark aside {
+      background: rgba(15, 23, 42, 0.96) !important;
+      border-color: rgba(51, 65, 85, 0.9) !important;
+      box-shadow: 18px 0 45px -34px rgba(0, 0, 0, 0.8);
+    }
+
+    aside .bg-slate-50,
+    #modal-profile .bg-slate-50,
+    #modal-settings .bg-slate-50 {
+      background-color: rgba(248, 250, 252, 0.88) !important;
+    }
+
+    .dark aside .bg-slate-50,
+    .dark aside .bg-white,
+    .dark #modal-profile .bg-slate-50,
+    .dark #modal-settings .bg-slate-50 {
+      background-color: rgba(30, 41, 59, 0.72) !important;
+    }
+
+    .dark #modal-profile > div,
+    .dark #modal-settings > div {
+      background-color: #0f172a !important;
+      border: 1px solid rgba(51, 65, 85, 0.9);
+    }
+
+    input, textarea, select {
+      border-color: #dbe3ef !important;
+      box-shadow: 0 1px 2px rgba(15, 23, 42, 0.03);
+    }
+
+    input:focus, textarea:focus, select:focus {
+      border-color: var(--brand-color) !important;
+      box-shadow: 0 0 0 3px rgba(2, 132, 199, 0.13) !important;
+      outline: none !important;
+    }
+
+    .dark input,
+    .dark textarea,
+    .dark select {
+      background-color: rgba(15, 23, 42, 0.78) !important;
+      border-color: #334155 !important;
+      color: #e5edf7 !important;
+      box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.025);
+    }
+
+    .dark input::placeholder,
+    .dark textarea::placeholder {
+      color: #64748b !important;
+    }
+
+    .dark label,
+    .dark .text-slate-500,
+    .dark .text-slate-400 {
+      color: #94a3b8 !important;
+    }
+
+    .dark .text-brand-navy,
+    .dark .text-slate-700,
+    .dark .text-slate-800 {
+      color: #e2e8f0 !important;
+    }
+
+    .dark .border,
+    .dark .border-slate-100,
+    .dark .border-slate-200 {
+      border-color: rgba(51, 65, 85, 0.9) !important;
+    }
+
+    #preview-pane {
+      background:
+        linear-gradient(135deg, rgba(148, 163, 184, 0.92), rgba(100, 116, 139, 0.94)) !important;
+    }
+
+    .dark #preview-pane {
+      background:
+        radial-gradient(circle at top right, rgba(2, 132, 199, 0.13), transparent 26rem),
+        linear-gradient(135deg, #020617, #111827 58%, #0f172a) !important;
+    }
+
+    #page-counter {
+      background: rgba(15, 23, 42, 0.88) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      box-shadow: 0 18px 40px -24px rgba(2, 6, 23, 0.9);
+    }
+
+    .page-sheet {
+      box-shadow: 0 24px 60px -36px rgba(15, 23, 42, 0.75), 0 4px 14px -9px rgba(15, 23, 42, 0.35) !important;
+    }
+
+    .dark .page-sheet {
+      box-shadow: 0 24px 70px -34px rgba(0, 0, 0, 0.95), 0 0 0 1px rgba(148, 163, 184, 0.08) !important;
+    }
+
+    #search_results_list,
+    #kontainer-arsip {
+      background-color: rgba(255, 255, 255, 0.96) !important;
+    }
+
+    .dark #search_results_list,
+    .dark #kontainer-arsip {
+      background-color: rgba(15, 23, 42, 0.96) !important;
+      border-color: #334155 !important;
+    }
+
+    #toast-container > div {
+      border-radius: 1rem !important;
+    }
+
+    .dark #toast-container > div {
+      background-color: rgba(15, 23, 42, 0.96) !important;
+      border-color: rgba(51, 65, 85, 0.95) !important;
+    }
+
+    @media print {
+      body {
+        background: white !important;
+      }
+      #preview-pane {
+        background: white !important;
+      }
+      .page-sheet {
+        box-shadow: none !important;
+      }
+    }
+
+    @media (max-width: 1024px) {
+      #main-dashboard {
+        height: 100dvh;
+      }
+
+      #main-dashboard > header {
+        height: auto !important;
+        min-height: 4rem;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        padding: 0.75rem 1rem !important;
+      }
+
+      #app-title-nav {
+        max-width: calc(100vw - 11rem);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      #main-dashboard > .flex {
+        flex-direction: column;
+      }
+
+      #main-dashboard aside {
+        width: 100% !important;
+        max-height: 48dvh;
+        border-right: 0 !important;
+        border-bottom: 1px solid rgba(203, 213, 225, 0.85) !important;
+      }
+
+      #preview-pane {
+        flex: 1 1 auto;
+        min-height: 0;
+        overflow: auto !important;
+        padding: 1rem 1rem 4.5rem !important;
+        align-items: flex-start !important;
+      }
+      
+      #print-area {
+        align-items: flex-start !important;
+        min-width: var(--sheet-width);
+      }
+
+      #page-counter {
+        top: auto !important;
+        right: 1rem !important;
+        bottom: 1rem !important;
+        padding: 0.55rem 0.85rem !important;
+      }
+
+      /* Logic Toggle View Mobile */
+      .mobile-focus-preview #main-sidebar { display: none !important; }
+      .mobile-focus-preview #preview-pane { display: flex !important; }
+      .mobile-focus-editor #preview-pane { display: none !important; }
+      .mobile-focus-editor #main-sidebar { width: 100% !important; max-height: 100dvh !important; display: flex !important; }
+    }
+
+    @media (max-width: 640px) {
+      #main-dashboard > header > div:last-child {
+        width: 100%;
+        justify-content: space-between;
+        gap: 0.5rem;
+      }
+
+      #user-profile {
+        max-width: 42vw;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+      }
+
+      aside > .grid {
+        grid-template-columns: repeat(4, minmax(0, 1fr));
+      }
+
+      aside > .grid button {
+        padding-left: 0.25rem;
+        padding-right: 0.25rem;
+        font-size: 9px;
+      }
+
+      aside .grid.grid-cols-2 {
+        grid-template-columns: 1fr !important;
+      }
+
+      aside .grid.grid-cols-4 {
+        grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+      }
+
+      aside .p-5 {
+        padding: 1rem !important;
+      }
+
+      #main-dashboard aside {
+        max-height: 54dvh;
+      }
+    }
+  </style>

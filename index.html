@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Aplikasi Surat SDN Mojogemi 02</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght=300;400;500;600;700&family=Inter:wght=300;400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+  <script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/tinymce/7.1.1/tinymce.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+  
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: { 
+        extend: { 
+          fontFamily: { sans: ['Plus Jakarta Sans', 'sans-serif'] }, 
+          colors: { brand: { navy: '#0f172a', blue: 'var(--brand-color)', gold: '#d4af37', slate: '#f8fafc' } } 
+        } 
+      }
+    }
+  </script>
+
+  <?!= include('css'); ?>
+</head>
+<body class="bg-slate-100 dark:bg-slate-950 font-sans text-slate-800 dark:text-slate-200 antialiased">
+
+  <!-- DUKUNGAN ENGINE LAMA: Variabel Penyimpanan Base64 Logo (Jangan Diubah Menjadi Input) -->
+  <div style="display: none !important;">
+    <input type="hidden" id="in_logo_kiri">
+    <input type="hidden" id="in_logo_kanan">
+    <input type="hidden" id="in_serial_id">
+  </div>
+
+  <!-- Login Screen -->
+  <div id="login-page" class="flex min-h-screen items-center justify-center bg-gradient-to-br from-brand-navy via-slate-900 to-brand-blue p-4">
+    <div class="w-full max-w-md bg-white/95 backdrop-blur-md p-8 rounded-3xl shadow-2xl border border-white/20">
+      <div class="text-center mb-8">
+        <div class="inline-flex items-center justify-center w-16 h-16 rounded-2xl mb-3">
+          <img id="app-logo-login" alt="logo" class="w-full h-full object-contain" src="<?= appLogo ?>"></img>
+        </div>
+        <h2 id="app-title-login" class="text-2xl font-bold text-brand-navy tracking-tight"><?= appName ?></h2>
+        <p class="text-sm text-slate-500 mt-1">Sistem Administrasi Surat Dinas Digital</p>
+      </div>
+
+      <form onsubmit="handleLogin(event)" class="space-y-5">
+        <div>
+  <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">Username</label>
+  <div class="relative">
+    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><i class="fa fa-user"></i></span>
+    <input placeholder="Masukkan username..." type="text" id="username" autocomplete="username" class="w-full pl-10 pr-4 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm" required>
+  </div>
+</div>
+
+<div class="mt-4">
+  <label class="block text-xs font-semibold uppercase tracking-wider text-slate-600 mb-2">Password</label>
+  <div class="relative">
+    <span class="absolute inset-y-0 left-0 flex items-center pl-3 text-slate-400"><i class="fa fa-lock"></i></span>
+    <input placeholder="&#9679;&#9679;&#9679;&#9679;&#9679;" type="password" id="password" autocomplete="current-password" class="w-full pl-10 pr-12 py-3 bg-slate-50 border border-slate-200 rounded-xl outline-none text-sm" required>
+    <!-- Tombol Mata Toggle -->
+    <button type="button" onclick="togglePassword()" class="absolute inset-y-0 right-0 flex items-center pr-3 text-slate-400 hover:text-sky-600 transition-colors">
+      <i id="eye-icon" class="fa fa-eye"></i>
+    </button>
+  </div>
+</div>
+        <button type="submit" class="w-full py-3.5 bg-brand-blue hover:bg-brand-blue/90 text-white font-bold rounded-xl shadow-lg transition-all flex items-center justify-center gap-2">
+          Masuk <i class="fa-solid fa-arrow-right-to-bracket text-xs"></i>
+        </button>
+      </form>
+    </div>
+  </div>
+
+  <!-- Verification View (Muncul hanya saat scan QR) -->
+  <?!= include('verification'); ?>
+
+  <!-- Main Dashboard -->
+  <div id="main-dashboard" class="h-screen flex flex-col hidden">
+    <header class="bg-brand-navy text-white h-16 flex items-center justify-between px-6 shadow-md shrink-0">
+      <div class="flex items-center gap-3">
+        <div class="bg-white p-2 rounded-xl text-white overflow-hidden w-10 h-10 flex items-center justify-center">
+          <img id="brand-logo-nav" alt="logo" class="w-full h-full object-contain" src="">
+        </div>
+        <span id="app-title-nav" class="font-bold text-lg tracking-tight"><?= appName ?></span>
+      </div>
+      <div class="flex items-center gap-4">
+        <!-- Dashboard Badges -->
+        <div class="hidden md:flex items-center gap-2 border-r border-slate-700 pr-4 mr-2">
+          <div class="flex flex-col items-center"> 
+            <div id="header-stats" class="flex gap-2 mt-1"></div>
+          </div>
+        </div>
+        <button onclick="bukaModalProfile()" class="text-sm bg-slate-800 px-4 py-1.5 rounded-full border border-slate-700 flex items-center gap-2 text-slate-300 hover:bg-slate-700 transition-colors" id="user-profile" title="Klik untuk edit profil"></button>
+        <button onclick="toggleDarkMode()" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-slate-700 text-amber-400 transition-all shadow-lg" title="Ganti Mode Terang/Gelap">
+          <i id="theme-icon" class="fa fa-moon"></i>
+        </button>
+        <button onclick="bukaModalAbout()" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-emerald-600 text-slate-400 hover:text-white transition-all shadow-lg" title="Tentang Aplikasi"><i class="fa fa-info-circle"></i></button>
+        <button id="btn-open-settings" onclick="bukaModalSettings()" class="w-10 h-10 flex items-center justify-center rounded-xl bg-slate-800 hover:bg-brand-blue text-slate-400 hover:text-white transition-all shadow-lg hidden" title="Pengaturan Aplikasi"><i class="fa fa-cog"></i></button>
+        <button onclick="handleLogout()" class="text-xs bg-red-600/20 hover:bg-red-600 text-red-400 hover:text-white px-3 py-1.5 rounded-xl transition-all font-semibold">Keluar</button>
+      </div>
+    </header>
+
+    <div class="flex flex-1 overflow-hidden">
+      <!-- Sidebar Control Panel -->
+      <div id="sidebar-container" class="flex shrink-0 transition-all duration-300 ease-in-out relative">
+        <?!= include('sidebar'); ?>
+        <!-- Toggle Button Sidebar -->
+        <button onclick="toggleSidebarCollapse()" class="absolute -right-3 top-1/2 -translate-y-1/2 w-6 h-12 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-full shadow-md z-[60] flex items-center justify-center text-slate-400 hover:text-brand-blue transition-all" title="Sembunyikan/Tampilkan Sidebar">
+          <i id="sidebar-toggle-icon" class="fa fa-chevron-left text-[10px]"></i>
+        </button>
+      </div>
+
+      <!-- Area Pratinjau Kertas Real-time -->
+      <main id="preview-pane" class="flex-1 bg-slate-400 dark:bg-slate-900 overflow-y-auto pt-8 px-8 pb-24 flex flex-col items-center shadow-inner relative transition-all duration-300">
+        <!-- Page Indicator Floating -->
+        <div id="page-counter" class="fixed top-20 right-8 z-[60] bg-brand-navy/90 backdrop-blur-md text-white px-5 py-2 rounded-2xl text-[10px] font-bold uppercase tracking-[0.2em] shadow-2xl border border-white/10">
+          <i class="fa fa-file-lines mr-2 text-brand-blue"></i> Hal: <span id="current-page-val" class="text-brand-blue">1</span>
+        </div>
+
+        <div id="print-area" class="text-black text-[12pt] leading-normal w-full flex flex-col items-center">
+          <!-- Halaman akan di-generate otomatis di sini oleh JS -->
+        </div>
+        
+        <!-- Tombol Floating Mobile Toggle View -->
+        <button onclick="toggleMobileView()" class="lg:hidden fixed bottom-6 right-6 z-[70] w-14 h-14 bg-brand-blue text-white rounded-full shadow-2xl flex items-center justify-center transition-all active:scale-90" id="mobile-view-toggle">
+          <i id="mobile-toggle-icon" class="fa fa-eye text-xl"></i>
+        </button>
+
+        <div class="mt-auto pt-10 pb-5 text-center text-[10px] text-slate-400 dark:text-slate-600 select-none uppercase tracking-[0.3em] font-bold opacity-50">
+          &copy; 2026 <span id="footer-app-name-meta">SDN Mojogemi 02</span> &bull; Digitalized by M. Fahmy
+        </div>
+      </main>
+
+    </div>
+  </div>
+
+  <!-- Modals -->
+  <?!= include('modals'); ?>
+
+  <!-- Toast Notification Container -->
+  <div id="toast-container" class="fixed bottom-5 right-5 z-[9999] space-y-3 max-w-sm w-full pointer-events-none"></div>
+
+<!-- Hidden Measurement Container (Digunakan untuk kalkulasi tinggi elemen sebelum dirender) -->
+<div id="measurement-box" class="absolute invisible h-auto overflow-visible pointer-events-none" style="width: 210mm; padding: 20mm;"></div>
+
+
+<!-- HTML LAST -->
+
+<!-- SCRIPT -->
+<script>
+  const globalParams = <?!= JSON.stringify(urlParams || {}) ?>;
+  const globalLogo = <?!= JSON.stringify(appLogo || "") ?>;
+  const globalAppName = <?!= JSON.stringify(appName || "") ?>;
+</script>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.css">
+<script src="https://cdn.jsdelivr.net/npm/cropperjs@1.5.13/dist/cropper.min.js"></script>
+<?!= include('js'); ?>
+<!-- SCRIPT LAST -->
+
+<!-- OVERLAY LOADING UNIFIED (MURNI TAILWIND) -->
+<div id="loading" class="fixed inset-0 bg-slate-900/40 dark:bg-black/60 backdrop-blur-md z-[99999] flex flex-col items-center justify-center hidden opacity-0 transition-opacity duration-300">
+  <div class="bg-white/90 dark:bg-slate-900/90 p-8 rounded-[2.5rem] shadow-[0_20px_50px_-12px_rgba(0,0,0,0.2)] dark:shadow-[0_20px_50px_-12px_rgba(0,0,0,0.6)] flex flex-col items-center space-y-6 max-w-xs w-full mx-4 border border-white/20 dark:border-slate-800">
+    <!-- Spinner Kustom dengan Efek Glow -->
+    <div class="relative w-16 h-16">
+      <div class="absolute inset-0 rounded-full border-4 border-slate-100 dark:border-slate-800"></div>
+      <div class="absolute inset-0 rounded-full border-4 border-t-brand-blue border-r-brand-gold animate-spin shadow-[0_0_15px_rgba(2,132,199,0.3)]"></div>
+    </div>
+    <div class="space-y-3 text-center">
+      <p id="loading-text" class="text-xs font-black text-slate-800 dark:text-slate-100 tracking-[0.2em] uppercase">Memproses</p>
+      <!-- Loading Dots Animation -->
+      <div class="flex justify-center gap-1.5">
+        <div class="w-1.5 h-1.5 rounded-full bg-brand-blue animate-bounce [animation-delay:-0.3s]"></div>
+        <div class="w-1.5 h-1.5 rounded-full bg-brand-gold animate-bounce [animation-delay:-0.15s]"></div>
+        <div class="w-1.5 h-1.5 rounded-full bg-brand-blue animate-bounce"></div>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>
