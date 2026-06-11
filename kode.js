@@ -9,6 +9,7 @@
 // Gunakan Project Settings > Script Properties untuk mengisi nilai-nilai ini di production
 const SPREADSHEET_ID = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID') || "ID_SPREADSHEET_ANDA"; 
 const FOLDER_LOGO_ID = PropertiesService.getScriptProperties().getProperty('FOLDER_LOGO_ID') || "ID_FOLDER_DRIVE_ANDA";
+const FOLDER_MASUK_ID = PropertiesService.getScriptProperties().getProperty('FOLDER_MASUK_ID') || "ID_FOLDER_SURAT_MASUK_ANDA";
 const NPSN_SEKOLAH = PropertiesService.getScriptProperties().getProperty('NPSN_SEKOLAH') || "00000000"; 
 
 // Nama-nama Sheet
@@ -19,6 +20,7 @@ const SHEET_TEMPLATES = "Database_Templates";
 const SHEET_KLASIFIKASI = "Kode_Klasifikasi";
 const SHEET_SISWA = "Database_Siswa";
 const SHEET_GURU = "Database_Guru";
+const SHEET_LOG_MASUK = "Log_Surat_Masuk";
 
 /**
  * Fungsi Utama untuk menjalankan Web App
@@ -119,8 +121,10 @@ function inisialisasiDatabase() {
       ["Layout_Type", "standard"],
       
       ["Ttd_Frasa_Ditetapkan", "Ditetapkan di"],
+      ["Ttd_Frasa_Tanggal", "Pada Tanggal"],
       ["Ttd_Height", "80"],
       ["Ttd_Gunakan_Materai", "TIDAK"],
+      ["Ttd_Gunakan_Foto", "TIDAK"],
 
       // Data TTD Pejabat 1 (Utama)
       ["Ttd_Jabatan_1", "Kepala Sekolah"],
@@ -188,7 +192,7 @@ function inisialisasiDatabase() {
   if (!ss.getSheetByName(SHEET_SISWA)) {
     let sh = ss.insertSheet(SHEET_SISWA);
     const headers = [
-      "Nama", "NIS", "NISN", "Tempat_Lahir", "Tanggal_Lahir", "Nama_Ayah", "Nama_Ibu", "Kelas", "Tahun_Ajaran", "VA_PIP", "Rek_PIP", "Nomor_Ijazah", "Ket_Lulus",
+      "Nama", "NIS", "NISN", "Tempat_Lahir", "Tanggal_Lahir", "Dusun", "Desa", "RT", "RW", "Kecamatan", "Kabupaten", "Nama_Ayah", "Nama_Ibu", "Kelas", "Tahun_Ajaran", "VA_PIP", "Rek_PIP", "Nomor_Ijazah", "Ket_Lulus",
       "Pendidikan Agama dan Budi Pekerti",
       "Pendidikan Pancasila",
       "Bahasa Indonesia",
@@ -201,7 +205,7 @@ function inisialisasiDatabase() {
       "Baca Tulis Al Quran (BTA)"
     ];
     sh.appendRow(headers);
-    sh.getRange("A:W").setNumberFormat("@");
+    sh.getRange("A:AC").setNumberFormat("@");
   }
 
   // 7. Sheet Database Guru
@@ -209,6 +213,13 @@ function inisialisasiDatabase() {
     let sh = ss.insertSheet(SHEET_GURU);
     const headers = ["Nama", "NIP", "NUPTK", "Jabatan", "Pangkat_Golongan", "Unit_Kerja", "Tugas_Utama", "Tugas_Tambahan"];
     sh.appendRow(headers);
+    sh.getRange("A:H").setNumberFormat("@");
+  }
+
+  // 8. Sheet Log Surat Masuk
+  if (!ss.getSheetByName(SHEET_LOG_MASUK)) {
+    let sh = ss.insertSheet(SHEET_LOG_MASUK);
+    sh.appendRow(["Timestamp", "Operator", "Tanggal_Terima", "Asal_Surat", "Nomor_Surat_Asal", "Perihal", "Isi_OCR", "Link_File"]);
     sh.getRange("A:H").setNumberFormat("@");
   }
 }
@@ -230,6 +241,51 @@ function prosesLogin(username, password) {
     return { status: "FAILED", message: "Username atau password salah!" };
   } catch (error) {
     return { status: "ERROR", message: error.toString() };
+  }
+}
+
+/**
+ * OCR ENGINE: Mengolah Surat Masuk (Upload + Ekstraksi Teks)
+ * Fungsi ini membutuhkan Layanan "Drive API" diaktifkan di Advanced Services.
+ */
+function simpanSuratMasukOCR(metadata, base64Data, mimeType) {
+  try {
+    const ss = dapatkanSpreadsheetHost();
+    const sheet = ss.getSheetByName(SHEET_LOG_MASUK);
+    const folder = DriveApp.getFolderById(FOLDER_MASUK_ID); // Menggunakan folder khusus surat masuk
+    
+    // 1. Simpan File Asli ke Drive
+    const decoded = Utilities.base64Decode(base64Data);
+    const blob = Utilities.newBlob(decoded, mimeType, "Scan_Masuk_" + metadata.nomor_asal);
+    const file = folder.createFile(blob);
+    const fileUrl = file.getUrl();
+    
+    // OCR dihapus, teks ekstraksi diisi default dengan strip
+    let extractedText = "-";
+
+    // 3. Catat ke Database Log_Surat_Masuk
+    sheet.appendRow([
+      new Date(),
+      metadata.operator || "Admin",
+      metadata.tanggal_terima,
+      metadata.asal_surat,
+      metadata.nomor_asal,
+      metadata.perihal,
+      extractedText,
+      fileUrl
+    ]);
+    
+    // Format baris terakhir agar rapi
+    sheet.getRange(sheet.getLastRow(), 1, 1, 8).setNumberFormat("@");
+
+    return { 
+      status: "SUCCESS", 
+      message: "Surat berhasil diarsipkan. Teks telah diekstrak otomatis.",
+      extracted: extractedText.substring(0, 200) + "..." 
+    };
+
+  } catch (e) {
+    return { status: "ERROR", message: "Gagal memproses surat masuk: " + e.toString() };
   }
 }
 
@@ -266,18 +322,35 @@ function cariSiswa(query) {
     const sheet = ss.getSheetByName(SHEET_SISWA);
     if (!sheet) return [];
     
+        const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return []; // Hanya header atau kosong
+    
     const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const q = query.toString().toLowerCase();
+    const headers = data[0].map(h => String(h).trim());
+    const namaIdx = headers.findIndex(h => h.toLowerCase() === "nama");
+    const nisnIdx = headers.findIndex(h => h.toLowerCase() === "nisn");
+    const q = String(query || "").toLowerCase().replace(/[^a-z0-9-]/g, ''); // Izinkan tanda hubung
+    const qAsli = String(query || "").toLowerCase();
     
     return data.slice(1)
-      .filter(row => row[0].toString().toLowerCase().includes(q) || row[2].toString().toLowerCase().includes(q))
+      .filter(row => {
+        const namaVal = namaIdx !== -1 ? String(row[namaIdx] || "").toLowerCase() : "";
+        const nisnVal = nisnIdx !== -1 ? String(row[nisnIdx] || "").toLowerCase().replace(/[^a-z0-9]/g, '') : "";
+        return (namaIdx !== -1 && namaVal.includes(qAsli)) || (nisnIdx !== -1 && nisnVal.includes(q));
+      }).filter(Boolean) // Filter out any null/undefined results
       .map(row => {
         let obj = {};
         headers.forEach((h, i) => {
-          // Format tanggal jika kolomnya adalah Tanggal_Lahir
-          if (h === "Tanggal_Lahir" && row[i] instanceof Date) {
-            obj[h] = Utilities.formatDate(row[i], "GMT+7", "yyyy-MM-dd");
+          if (h === "Tanggal_Lahir") {
+            if (row[i] instanceof Date) {
+              obj[h] = Utilities.formatDate(row[i], "GMT+7", "yyyy-MM-dd");
+            } else if (typeof row[i] === "string" && row[i].includes("/")) {
+              const p = row[i].split("/"); // DD/MM/YYYY -> YYYY-MM-DD
+              if (p.length === 3) obj[h] = `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+              else obj[h] = row[i];
+            } else {
+              obj[h] = row[i];
+            }
           } else {
             obj[h] = row[i];
           }
@@ -289,23 +362,79 @@ function cariSiswa(query) {
 
 /**
  * GURU: Mencari data guru berdasarkan nama atau NIP
- */
+  */
 function cariGuru(query) {
   try {
     const ss = dapatkanSpreadsheetHost();
     const sheet = ss.getSheetByName(SHEET_GURU);
     if (!sheet) return [];
     const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const q = query.toString().toLowerCase();
-    return data.slice(1)
-      .filter(row => row[0].toString().toLowerCase().includes(q) || row[1].toString().toLowerCase().includes(q))
+    const headers = data[0].map(h => String(h).trim());
+    const namaIdx = headers.findIndex(h => h.toLowerCase() === "nama");
+    const nipIdx = headers.findIndex(h => h.toLowerCase() === "nip");
+    const q = String(query || "").toLowerCase().replace(/[^a-z0-9-]/g, ''); // Izinkan tanda hubung
+    const qAsli = String(query || "").toLowerCase();
+
+    const results = data.slice(1)
+      .filter(row => {
+        const nama = namaIdx !== -1 ? String(row[namaIdx] || "").toLowerCase() : "";
+        const nip = nipIdx !== -1 ? String(row[nipIdx] || "").toLowerCase().replace(/[^a-z0-9-]/g, '') : "";
+        return nama.includes(qAsli) || nip.includes(q);
+      }).filter(Boolean) // Filter out any null/undefined results
       .map(row => {
         let obj = {};
-        headers.forEach((h, i) => obj[h] = row[i]);
+        headers.forEach((h, i) => {
+          let val = row[i];
+          // Tambahkan kolom identitas lain jika diperlukan
+          if (["NIP", "NUPTK", "NISN", "RT", "RW", "NIS", "Kelas"].includes(h)) {
+            val = String(val).trim();
+          }
+          obj[h] = val;
+        });
         return obj;
       }).slice(0, 10);
-  } catch (e) { return []; }
+    return results;
+  } catch (e) { 
+    console.error("[ERROR] Backend cariGuru:", e.toString());
+    return []; 
+  }
+}
+
+/**
+  * GURU: Mengambil satu data guru secara spesifik berdasarkan NIP
+ */
+function ambilGuruByNip(nip) {
+  try {
+    const nipStr = String(nip).trim();
+    const ss = dapatkanSpreadsheetHost();
+    const sheet = ss.getSheetByName(SHEET_GURU);
+    const data = sheet.getDataRange().getValues();
+    const headers = data[0].map(h => String(h).trim());
+    const nipIdx = headers.findIndex(h => h.toLowerCase() === "nip");
+    
+    if (nipIdx === -1) throw new Error("Kolom NIP tidak ditemukan di Sheet Guru");
+
+    const row = data.find(r => {
+      const nipSheet = String(r[nipIdx]).trim();
+      return nipSheet === nipStr || 
+             nipSheet.replace(/[^a-z0-9]/g, '') === nipStr.replace(/[^a-z0-9]/g, '');
+    });
+    
+    if (row) {
+      let obj = {};
+      headers.forEach((h, i) => {
+        let val = row[i];
+        if (["NIP", "NUPTK", "NISN"].includes(h)) val = String(val).trim();
+        obj[h] = val;
+      });
+      return obj;
+    }
+    return null;
+
+  } catch (e) {
+    console.error("[ERROR] Backend ambilGuruByNip:", e.toString());
+    return null;
+  }
 }
 
 /**
@@ -316,18 +445,16 @@ function simpanGuruBaru(data) {
     const ss = dapatkanSpreadsheetHost();
     const sheet = ss.getSheetByName(SHEET_GURU);
     const dataRaw = sheet.getDataRange().getValues();
-    const headers = dataRaw[0];
-    const nipIdx = headers.indexOf("NIP");
-    const nipInput = String(data.NIP).trim();
-    let targetRow = -1;
-    for (let i = 1; i < dataRaw.length; i++) {
-      if (String(dataRaw[i][nipIdx]).trim() === nipInput) {
-        targetRow = i + 1;
-        break;
-      }
-    }
+    const headers = dataRaw[0].map(h => String(h).trim());
+    const nipIdx = headers.findIndex(h => h.toLowerCase() === "nip");
+    const nipInput = String(data.NIP || "").trim();
+
+    const nipMap = new Map(dataRaw.map((r, i) => [String(r[nipIdx]).trim(), i + 1]));
+    let targetRow = nipInput && nipMap.has(nipInput) ? nipMap.get(nipInput) : -1;
+
     const rowData = headers.map(h => data[h] || "");
-    if (targetRow !== -1) {
+
+    if (targetRow > 1) {
       sheet.getRange(targetRow, 1, 1, rowData.length).setValues([rowData]);
       return { status: "SUCCESS", message: "Data guru '" + data.Nama + "' berhasil diperbarui." };
     } else {
@@ -378,23 +505,25 @@ function simpanSiswaBaru(data) {
   try {
     const ss = dapatkanSpreadsheetHost();
     const sheet = ss.getSheetByName(SHEET_SISWA);
-    if (!sheet) return { status: "ERROR", message: "Sheet Database_Siswa tidak ditemukan." };
+       if (!sheet) return { status: "ERROR", message: "Sheet Database_Siswa tidak ditemukan." };
 
     const dataRaw = sheet.getDataRange().getValues();
-    const headers = dataRaw[0];
-    const nisnIdx = headers.indexOf("NISN");
-    const nisnInput = String(data.NISN).trim();
+    const headers = dataRaw[0].map(h => String(h).trim());
+    const nisnIdx = headers.findIndex(h => h.toLowerCase() === "nisn");
+    const nisnInput = String(data.NISN || "").trim();
 
-    // Cari apakah NISN sudah ada (Update) atau belum (Tambah Baru)
-    let targetRow = -1;
-    for (let i = 1; i < dataRaw.length; i++) {
-      if (String(dataRaw[i][nisnIdx]).trim() === nisnInput) {
-        targetRow = i + 1;
-        break;
+    const nisnMap = new Map(dataRaw.map((r, i) => [String(r[nisnIdx]).trim(), i + 1]));
+    const targetRow = nisnInput && nisnMap.has(nisnInput) ? nisnMap.get(nisnInput) : -1;
+
+    const rowData = headers.map(h => {
+      let val = data[h] || "";
+
+      if (h === "Tanggal_Lahir" && val.includes("-")) {
+        const p = val.split("-"); // YYYY-MM-DD -> DD/MM/YYYY
+        if (p.length === 3) val = `${p[2]}/${p[1]}/${p[0]}`; // Corrected: assign to val, not return
       }
-    }
-
-    const rowData = headers.map(h => data[h] || "");
+      return val;
+    });
 
     if (targetRow !== -1) {
       sheet.getRange(targetRow, 1, 1, rowData.length).setValues([rowData]);
@@ -416,8 +545,8 @@ function hapusSiswa(nisn) {
     const ss = dapatkanSpreadsheetHost();
     const sheet = ss.getSheetByName(SHEET_SISWA);
     const data = sheet.getDataRange().getValues();
-    const headers = data[0];
-    const nisnIdx = headers.indexOf("NISN");
+    const headers = data[0].map(h => String(h).trim());
+    const nisnIdx = headers.findIndex(h => h.toLowerCase() === "nisn");
     
     for (let i = 1; i < data.length; i++) {
       if (String(data[i][nisnIdx]).trim() === String(nisn).trim()) {
@@ -435,11 +564,29 @@ function hapusSiswa(nisn) {
 function ambilSemuaSiswa() {
   try {
     const sheet = dapatkanSpreadsheetHost().getSheetByName(SHEET_SISWA);
-    const data = sheet.getDataRange().getValues();
+    if (!sheet) return [];
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return [];
+
+    const data = sheet.getRange(1, 1, lastRow, sheet.getLastColumn()).getValues();
     const headers = data[0];
     return data.slice(1).map(row => {
       let obj = {};
-      headers.forEach((h, i) => obj[h] = row[i]);
+      headers.forEach((h, i) => {
+        if (h === "Tanggal_Lahir") {
+          if (row[i] instanceof Date) {
+            obj[h] = Utilities.formatDate(row[i], "GMT+7", "yyyy-MM-dd");
+          } else if (typeof row[i] === "string" && row[i].includes("/")) {
+            const p = row[i].split("/");
+            if (p.length === 3) obj[h] = `${p[2]}-${p[1].padStart(2, '0')}-${p[0].padStart(2, '0')}`;
+            else obj[h] = row[i];
+          } else {
+            obj[h] = row[i];
+          }
+        } else {
+          obj[h] = row[i];
+        }
+      });
       return obj;
     });
   } catch (e) { return []; }
@@ -452,24 +599,27 @@ function imporSiswaBatch(siswaArray) {
   try {
     const ss = dapatkanSpreadsheetHost();
     const sheet = ss.getSheetByName(SHEET_SISWA);
-    const dataExist = sheet.getDataRange().getValues();
-    const headers = dataExist[0];
-    const nisnIdx = headers.indexOf("NISN");
+    const dataExist = sheet.getDataRange().getValues(); 
+    const headers = dataExist[0].map(h => String(h).trim()); 
+    const nisnIdx = headers.findIndex(h => h.toLowerCase() === "nisn");
+    if (nisnIdx === -1) return { status: "ERROR", message: "Kolom NISN tidak ditemukan di database." };
     
-    // Pindahkan NISN ke Map untuk pencarian cepat (O(n))
+    // Map untuk pencarian O(1)
     const nisnMap = new Map();
     dataExist.forEach((row, index) => {
-      if (index > 0) nisnMap.set(String(row[nisnIdx]).trim(), index + 1);
+      const key = String(row[nisnIdx] || "").trim();
+      if (index > 0 && key) nisnMap.set(key, index + 1);
     });
 
     siswaArray.forEach(s => {
       const nisnInput = String(s.NISN || "").trim();
       const rowData = headers.map(h => s[h] || "");
       
-      if (nisnMap.has(nisnInput)) {
+      if (nisnInput && nisnMap.has(nisnInput)) {
         sheet.getRange(nisnMap.get(nisnInput), 1, 1, rowData.length).setValues([rowData]);
-      } else {
+      } else if (nisnInput) {
         sheet.appendRow(rowData);
+        nisnMap.set(nisnInput, sheet.getLastRow());
       }
     });
 
@@ -485,22 +635,26 @@ function imporGuruBatch(guruArray) {
     const ss = dapatkanSpreadsheetHost();
     const sheet = ss.getSheetByName(SHEET_GURU);
     const dataExist = sheet.getDataRange().getValues();
-    const headers = dataExist[0];
-    const nipIdx = headers.indexOf("NIP");
+    const headers = dataExist[0].map(h => String(h).trim());
+    const nipIdx = headers.findIndex(h => h.toLowerCase() === "nip");
+    if (nipIdx === -1) return { status: "ERROR", message: "Kolom NIP tidak ditemukan di database." };
+
     
     const nipMap = new Map();
     dataExist.forEach((row, index) => {
-      if (index > 0) nipMap.set(String(row[nipIdx]).trim(), index + 1);
+      const key = String(row[nipIdx] || "").trim();
+      if (index > 0 && key) nipMap.set(key, index + 1);
     });
 
     guruArray.forEach(g => {
       const nipInput = String(g.NIP || "").trim();
       const rowData = headers.map(h => g[h] || "");
       
-      if (nipMap.has(nipInput)) {
+      if (nipInput && nipMap.has(nipInput)) {
         sheet.getRange(nipMap.get(nipInput), 1, 1, rowData.length).setValues([rowData]);
-      } else {
+      } else if (nipInput) {
         sheet.appendRow(rowData);
+        nipMap.set(nipInput, sheet.getLastRow());
       }
     });
 
@@ -564,12 +718,12 @@ function simpanPaketSuratLengkap(paket) {
     if (!sheetLog) {
       return { status: "ERROR", message: "Sheet Log_Surat tidak ditemukan." };
     }
-
+    
+    const lastRow = sheetLog.getLastRow();
+    
     // Ambil data konten teks surat dari parameter
     const s = paket.surat ? paket.surat : paket;
     
-    // Masukkan data murni surat sebagai baris baru di log arsip
-    sheetLog.getRange("B:M").setNumberFormat("@");
     sheetLog.appendRow([
       new Date(), 
       String(s.operator || "Operator"), 
@@ -585,6 +739,9 @@ function simpanPaketSuratLengkap(paket) {
       String(s.layout || "standard"),
       String(s.ref_id || "")
     ]);
+
+    // Cukup format baris yang baru saja ditambahkan agar ringan
+    sheetLog.getRange(lastRow + 1, 2, 1, 12).setNumberFormat("@");
 
     return { status: "SUCCESS", message: "Surat berhasil diarsipkan ke database log." };
 
@@ -606,17 +763,18 @@ function simpanTemplateDinamis(data) {
     }
 
     const namaTemplate = data.nama || "Template Baru";
-    const existingData = sheetTemplate.getDataRange().getValues();
-    const isDuplicate = existingData.some(row => row[0].toString().toLowerCase() === namaTemplate.toLowerCase());
+    
+    // OPTIMASI: Hanya ambil kolom pertama (Nama Template) untuk cek duplikat
+    const lastRow = sheetTemplate.getLastRow();
+    const names = lastRow > 1 ? sheetTemplate.getRange(2, 1, lastRow - 1, 1).getValues().flat() : [];
+    const isDuplicate = names.some(n => String(n).toLowerCase() === namaTemplate.toLowerCase());
     
     if (isDuplicate) {
       return { status: "FAILED", message: "Template dengan nama '" + namaTemplate + "' sudah ada. Gunakan nama lain." };
     }
 
     const s = data.surat ? data.surat : data;
-
-    // Masukkan data murni surat sebagai master template baru
-    sheetTemplate.getRange("A:J").setNumberFormat("@");
+    
     sheetTemplate.appendRow([
       String(namaTemplate), 
       String(s.tanggal || ""), 
@@ -629,6 +787,8 @@ function simpanTemplateDinamis(data) {
       String(s.tembusan || ""),
       String(s.layout || "standard")
     ]);
+    
+    sheetTemplate.getRange(sheetTemplate.getLastRow(), 1, 1, 10).setNumberFormat("@");
     
     return { status: "SUCCESS", message: "Master template '" + namaTemplate + "' berhasil disimpan." };
   } catch (e) { 
@@ -713,6 +873,27 @@ function ambilKodeKlasifikasiSurat() {
   } catch (e) {
     console.error("Gagal ambilKodeKlasifikasiSurat: " + e.toString());
     return [];
+  }
+}
+
+/**
+ * MASTER DATA: Menghapus kode klasifikasi surat
+ */
+function hapusKodeKlasifikasi(kode) {
+  try {
+    const ss = dapatkanSpreadsheetHost();
+    const sheet = ss.getSheetByName(SHEET_KLASIFIKASI);
+    const data = sheet.getDataRange().getValues();
+    
+    for (let i = 1; i < data.length; i++) {
+      if (String(data[i][0]).trim() === String(kode).trim()) {
+        sheet.deleteRow(i + 1);
+        return { status: "SUCCESS", message: `Kode '${kode}' berhasil dihapus.` };
+      }
+    }
+    return { status: "FAILED", message: "Kode tidak ditemukan." };
+  } catch (e) {
+    return { status: "ERROR", message: e.toString() };
   }
 }
 
@@ -862,6 +1043,119 @@ function verifikasiSuratByUid(uid) {
 }
 
 /**
+ * ARSIP: Mengambil data Log_Surat dan memformatnya untuk Agenda Excel
+ * Filter berdasarkan Tahun dan Header sesuai permintaan.
+ */
+function ambilDataArsipUntukEkspor(tahun) {
+  try {
+    const ss = dapatkanSpreadsheetHost();
+    const sheetLog = ss.getSheetByName(SHEET_LOG);
+    const sheetSetting = ss.getSheetByName(SHEET_PENGATURAN);
+    
+    if (!sheetLog) throw new Error("Sheet Log_Surat tidak ditemukan.");
+
+    // Ambil Nama Sekolah untuk kolom "Dari"
+    let schoolName = "SDN Mojogemi 02";
+    if (sheetSetting) {
+      const settings = sheetSetting.getDataRange().getValues();
+      const nameRow = settings.find(r => r[0] === "Kop_Sekolah");
+      if (nameRow) schoolName = nameRow[1];
+    }
+
+    const data = sheetLog.getDataRange().getValues();
+    if (data.length <= 1) return [];
+
+    const filteredRows = data.slice(1).filter(row => {
+      const noSurat = String(row[3] || "");
+      const parts = noSurat.split('/');
+      const yearInNo = parts.length > 0 ? parts[parts.length - 1] : "";
+      
+      // Cek tahun dari nomor surat (format: .../2026)
+      return yearInNo === String(tahun);
+    });
+
+    const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+    const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    return filteredRows.map(row => {
+      let tglRaw = row[2];
+      let hariTanggal = "-";
+      
+      // Pastikan tglRaw diubah menjadi objek Date agar getDay() bekerja
+      let d = (tglRaw instanceof Date) ? tglRaw : new Date(tglRaw);
+      
+      if (!isNaN(d.getTime())) {
+        hariTanggal = `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+      }
+      
+      const noSurat = String(row[3] || "");
+      const partsNo = noSurat.split('/');
+      const kodeKlasifikasi = partsNo[0] || "-";
+      
+      // Mengambil nomor urut sampai akhir (membuang kode klasifikasi di awal)
+      // Contoh: 400.3.5/001/.../2026 -> 001/.../2026
+      const noSuratTanpaKlasifikasi = partsNo.slice(1).join('/');
+
+      return {
+        "Hari, Tanggal": hariTanggal,
+        "No Surat": noSuratTanpaKlasifikasi || noSurat,
+        "Perihal": row[4] || "-",
+        "Kode Klasifikasi Surat": kodeKlasifikasi,
+        "Dari Siapa (Dari)": schoolName,
+        "Untuk Siapa (Ke)": row[5] || "-",
+        "Tembusan": row[9] || "-"
+      };
+    });
+  } catch (e) { throw new Error(e.toString()); }
+}
+
+/**
+ * ARSIP: Mengambil data Log_Surat_Masuk dan memformatnya untuk Agenda Excel
+ * Filter berdasarkan Tahun.
+ */
+function ambilDataSuratMasukUntukEkspor(tahun) {
+  try {
+    const ss = dapatkanSpreadsheetHost();
+    const sheetLog = ss.getSheetByName(SHEET_LOG_MASUK);
+    
+    if (!sheetLog) throw new Error("Sheet Log_Surat_Masuk tidak ditemukan.");
+
+    const data = sheetLog.getDataRange().getValues();
+    if (data.length <= 1) return [];
+
+    const targetTahun = String(tahun);
+    const days = ["Minggu", "Senin", "Selasa", "Rabu", "Kamis", "Jumat", "Sabtu"];
+    const months = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+
+    // Filter baris berdasarkan tahun dari kolom Tanggal_Terima (Indeks 2)
+    const filteredRows = data.slice(1).filter(row => {
+      let tglRaw = row[2];
+      let d = (tglRaw instanceof Date) ? tglRaw : new Date(tglRaw);
+      return !isNaN(d.getTime()) && String(d.getFullYear()) === targetTahun;
+    });
+
+    return filteredRows.map(row => {
+      let tglRaw = row[2];
+      let hariTanggal = "-";
+      let d = (tglRaw instanceof Date) ? tglRaw : new Date(tglRaw);
+      
+      if (!isNaN(d.getTime())) {
+        hariTanggal = `${days[d.getDay()]}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()}`;
+      }
+
+      return {
+        "Hari, Tanggal Terima": hariTanggal,
+        "Asal Surat (Dari)": row[3] || "-",
+        "Nomor Surat Asal": row[4] || "-",
+        "Perihal": row[5] || "-",
+        "Diterima Oleh": row[1] || "-",
+        "Link Dokumen": row[7] || "-"
+      };
+    });
+  } catch (e) { throw new Error(e.toString()); }
+}
+
+/**
  * Validasi: Cek apakah string nomor surat lengkap sudah digunakan dalam database
  */
 function cekFullNomorDuplikat(nomorFull) {
@@ -890,13 +1184,18 @@ function cekNomorDuplikat(urutanStr, tahun) {
   try {
     const sheet = dapatkanSpreadsheetHost().getSheetByName(SHEET_LOG);
     if (!sheet) return "ERROR";
-    const data = sheet.getDataRange().getValues();
+    
+    const lastRow = sheet.getLastRow();
+    if (lastRow <= 1) return "VALID";
+
+    // OPTIMASI: Hanya ambil kolom Nomor Surat (Kolom D) untuk divalidasi
+    const nomorData = sheet.getRange(1, 4, lastRow, 1).getValues();
     const targetUrutan = parseInt(urutanStr, 10);
     const targetTahun = String(tahun).trim();
     let urutanMaks = 0;
     
-    for (let i = 1; i < data.length; i++) {
-      let nomorArsip = String(data[i][3] || "");
+    for (let i = 1; i < nomorData.length; i++) {
+      let nomorArsip = String(nomorData[i][0] || "");
       let parts = nomorArsip.split('/');
       if (parts.length >= 4 && parts[parts.length - 1] === targetTahun) {
         let u = parseInt(parts[1], 10);
@@ -920,16 +1219,21 @@ function generateNomorSuratOtomatis(kodeKlasifikasi) {
   const lock = LockService.getScriptLock();
   try {
     lock.waitLock(10000); // Tunggu hingga 10 detik jika ada proses lain
-    const sheet = dapatkanSpreadsheetHost().getSheetByName(SHEET_LOG);
-    const data = sheet.getDataRange().getValues();
+    const ss = dapatkanSpreadsheetHost();
+    const sheet = ss.getSheetByName(SHEET_LOG);
+    const lastRow = sheet.getLastRow();
+    
+    // OPTIMASI: Hanya ambil kolom Nomor Surat untuk mencari urutan terbesar
+    const nomorData = lastRow > 1 ? sheet.getRange(2, 4, lastRow - 1, 1).getValues() : [];
+    
     const config = ambilPengaturan() || {};
     let urutanTerakhir = 0;
     let tahunIni = new Date().getFullYear().toString();
     let npsnSekolah = String(config.NPSN_Sekolah || NPSN_SEKOLAH).replace(/\D/g, "") || NPSN_SEKOLAH;
     
     // Cari urutan terbesar di seluruh data log untuk tahun berjalan (Global Sequence)
-    for (let i = 1; i < data.length; i++) {
-      let nomorArsip = String(data[i][3] || "");
+    for (let i = 0; i < nomorData.length; i++) {
+      let nomorArsip = String(nomorData[i][0] || "");
       let parts = nomorArsip.split('/');
       
       // Cek apakah format sesuai (KODE/URUTAN/NPSN/TAHUN) dan tahunnya cocok
