@@ -1,10 +1,11 @@
 <aside id="main-sidebar" class="w-full md:w-[380px] lg:w-[420px] xl:w-[450px] bg-white border-r border-slate-200 flex flex-col shrink-0 transition-all duration-300 overflow-hidden">
-        <div id="sidebar-tabs" class="grid grid-cols-5 bg-slate-50 border-b border-slate-200 text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center shrink-0">
+        <div id="sidebar-tabs" class="grid grid-cols-6 bg-slate-50 border-b border-slate-200 text-[9px] font-bold text-slate-500 uppercase tracking-wider text-center shrink-0">
           <button id="btn-tab-isi" onclick="switchTab('isi')" class="py-3 border-b-2 border-brand-blue text-brand-blue bg-white flex flex-col items-center gap-1"><i class="fa-solid fa-file-signature text-sm"></i> Admin</button>
           <button id="btn-tab-redaksi" onclick="switchTab('redaksi')" class="py-3 border-b-2 border-transparent hover:bg-slate-100 flex flex-col items-center gap-1 text-slate-500"><i class="fa-solid fa-pen-nib text-sm"></i> Redaksi</button>
           <button id="btn-tab-kop" onclick="switchTab('kop')" class="py-3 border-b-2 border-transparent hover:bg-slate-100 flex flex-col items-center gap-1"><i class="fa fa-school text-sm"></i> Kop Surat</button>
           <button id="btn-tab-ttd" onclick="switchTab('ttd')" class="py-3 border-b-2 border-transparent hover:bg-slate-100 flex flex-col items-center gap-1"><i class="fa fa-stamp text-sm"></i> TTD</button>
           <button id="btn-tab-arsip" onclick="switchTab('arsip'); muatDataArsip();" class="py-3 border-b-2 border-transparent hover:bg-slate-100 flex flex-col items-center gap-1"><i class="fa fa-folder-open text-sm"></i> Arsip</button>
+          <button id="btn-tab-masuk" onclick="switchTab('masuk')" class="py-3 border-b-2 border-transparent hover:bg-slate-100 flex flex-col items-center gap-1"><i class="fa-solid fa-file-import text-sm"></i> Surat Masuk</button>
         </div>
 
         <div class="flex-1 overflow-y-auto p-5 space-y-5">
@@ -74,6 +75,9 @@
                   </div>
                 </div>
                 <div class="relative">
+                  <span class="absolute inset-y-0 left-0 pl-3 flex items-center text-blue-400">
+                    <i class="fa fa-chalkboard-teacher text-xs"></i>
+                  </span>
                   <input type="text" id="search_guru" oninput="filterGuru(this.value)" placeholder="Ketik Nama atau NIP Guru..." class="w-full pl-9 pr-3 py-2.5 bg-white border border-blue-100 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 transition-all">
                   <div id="guru_results_list" class="absolute z-50 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-xl hidden max-h-48 overflow-y-auto divide-y divide-slate-50"></div>
                 </div>
@@ -248,13 +252,19 @@
                 <option value="segitiga">Formasi 3: Segitiga Pengesahan Atasan</option>
               </select>
             </div>
-            <div>
-              <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Frasa Lokasi (Layout Tengah)</label>
-              <input type="text" id="in_ttd_frasa_ditetapkan" class="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-xs outline-none" placeholder="Ditetapkan di / Dikeluarkan di" oninput="updateLivePreview()">
-            </div>
+    <div class="grid grid-cols-2 gap-3">
+      <div>
+        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Frasa Lokasi</label>
+        <input type="text" id="in_ttd_frasa_ditetapkan" class="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-xs outline-none" placeholder="Ditetapkan di" oninput="updateLivePreview()">
+      </div>
+      <div>
+        <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Frasa Tanggal</label>
+        <input type="text" id="in_ttd_frasa_tanggal" class="w-full px-3 py-1.5 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-slate-100 rounded-lg text-xs outline-none" placeholder="Pada Tanggal" oninput="updateLivePreview()">
+      </div>
+    </div>
             <div>
               <label class="block text-[10px] font-bold uppercase tracking-wider text-slate-400 mb-1">Ruang TTD & Materai</label>
-              <div class="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
+      <div class="grid grid-cols-2 gap-3 p-3 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl">
                 <div class="flex-1">
                   <span class="text-[9px] block text-slate-500 mb-1">Tinggi: <span id="val_ttd_height">80</span>px</span>
                   <input type="range" id="in_ttd_height" min="40" max="200" step="10" value="80" class="w-full h-1.5 bg-slate-200 rounded-lg appearance-none cursor-pointer accent-brand-blue" oninput="document.getElementById('val_ttd_height').innerText = this.value; updateLivePreview()">
@@ -266,6 +276,13 @@
                     <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-brand-blue"></div>
                   </label>
                 </div>
+        <div class="flex flex-col items-center border-l border-slate-200 dark:border-slate-700 pl-3 col-span-2 mt-2 pt-2">
+          <span class="text-[9px] text-slate-500 mb-1 uppercase">Gunakan Bingkai Foto 3x4</span>
+          <label class="relative inline-flex items-center cursor-pointer">
+            <input type="checkbox" id="in_ttd_foto" class="sr-only peer" onchange="updateLivePreview()">
+            <div class="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+          </label>
+        </div>
               </div>
             </div>
             <div class="space-y-3 text-xs">
@@ -296,10 +313,50 @@
             <button onclick="simpanTtdKeDatabase()" class="w-full py-2.5 bg-brand-navy hover:bg-slate-800 text-white font-bold rounded-xl shadow-md text-xs"><i class="fa-solid fa-stamp text-brand-gold"></i> Simpan Spesimen Ke Sheet</button>
           </div>
 
+          <!-- Section: Surat Masuk & OCR -->
+          <div id="section-masuk" class="space-y-4 hidden">
+            <div class="bg-brand-navy dark:bg-black text-white p-3 rounded-xl flex justify-between items-center shadow-sm">
+              <span class="text-xs font-bold uppercase tracking-wider"><i class="fa-solid fa-inbox text-brand-blue"></i> Administrasi Masuk</span>
+              <button onclick="eksporSuratMasukExcel()" class="text-[10px] bg-emerald-600 hover:bg-emerald-700 px-2 py-1 rounded transition flex items-center gap-1" title="Unduh Agenda Surat Masuk"><i class="fa-solid fa-file-excel"></i> Excel Agenda</button>
+            </div>
+
+            <div class="p-4 bg-blue-50/50 rounded-2xl border border-blue-100 space-y-3">
+              <h4 class="text-xs font-black text-brand-blue uppercase tracking-widest flex items-center gap-2"><i class="fa fa-cloud-upload"></i> Registrasi Surat Masuk</h4>
+              <p class="text-[10px] text-slate-500 leading-tight">Unggah pindaian surat (PDF/Gambar) untuk ekstraksi isi teks secara otomatis ke database.</p>
+              
+              <div class="space-y-2">
+                <input type="text" id="in_masuk_asal" placeholder="Asal Instansi Surat" class="w-full px-3 py-2 bg-white border rounded-xl text-xs outline-none">
+                <input type="text" id="in_masuk_nomor" placeholder="Nomor Surat Asal" class="w-full px-3 py-2 bg-white border rounded-xl text-xs outline-none">
+                <input type="text" id="in_masuk_perihal" placeholder="Perihal Surat Masuk" class="w-full px-3 py-2 bg-white border rounded-xl text-xs outline-none font-bold">
+                <div>
+                  <label class="text-[9px] font-bold text-slate-400 ml-1">TANGGAL TERIMA</label>
+                  <input type="date" id="in_masuk_tanggal" class="w-full px-3 py-2 bg-white border rounded-xl text-xs outline-none">
+                </div>
+              </div>
+
+              <div class="relative group">
+                <input type="file" id="file_surat_masuk" accept="image/*,application/pdf" class="hidden" onchange="updateFileLabel(this)">
+                <button type="button" onclick="document.getElementById('file_surat_masuk').click()" class="w-full py-4 bg-white border-2 border-dashed border-slate-200 rounded-2xl text-slate-400 hover:border-brand-blue hover:text-brand-blue transition-all flex flex-col items-center gap-1">
+                  <i class="fa fa-file-pdf text-xl"></i>
+                  <span id="label_file_masuk" class="text-[10px] font-bold uppercase">PILIH DOKUMEN (PDF/JPG)</span>
+                </button>
+              </div>
+
+              <button onclick="prosesSimpanSuratMasuk()" class="w-full py-3 bg-brand-blue text-white font-black rounded-xl shadow-lg shadow-brand-blue/20 flex items-center justify-center gap-2 uppercase tracking-widest text-[10px]">
+                <i class="fa fa-magic"></i> Simpan & Scan OCR
+              </button>
+            </div>
+            <div id="ocr_result_box" class="p-3 bg-slate-900 rounded-xl hidden">
+              <span class="text-[8px] font-bold text-emerald-400 uppercase tracking-widest block mb-1">Preview Hasil Ekstraksi:</span>
+              <div id="ocr_preview_text" class="text-[10px] text-slate-300 italic leading-tight line-clamp-4"></div>
+            </div>
+          </div>
+
           <!-- Section: Arsip -->
           <div id="section-arsip" class="hidden">
             <div class="bg-brand-navy dark:bg-black text-white p-3 rounded-xl mb-3 flex justify-between items-center">
               <span class="text-xs font-bold uppercase tracking-wider"><i class="fa-solid fa-server text-brand-blue"></i> Database Surat Keluar</span>
+              <button onclick="eksporArsipExcel()" class="text-[10px] bg-emerald-600 hover:bg-emerald-700 px-2 py-1 rounded transition ml-auto mr-1" title="Unduh Agenda Excel"><i class="fa-solid fa-file-excel"></i> Excel</button>
               <button onclick="muatDataArsip()" class="text-[10px] bg-slate-700 hover:bg-brand-blue px-2 py-1 rounded transition"><i class="fa-solid fa-rotate"></i> Refresh</button>
             </div>
             
