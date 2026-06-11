@@ -1,0 +1,3951 @@
+<script>
+let modeTtdAktif = "kanan-bawah";
+let userSessionName = "Guest"; 
+let userSessionUsername = "guest";
+// Variable global untuk menyimpan data sementara agar tidak bolak-balik ke server
+window.cacheTemplates = [];
+window.cacheArsip = [];
+window.cacheKodeKlasifikasi = [];
+window.selectedSiswa = null;
+window.selectedSiswaList = [];
+window.fullCacheSiswa = [];
+window.fullCacheGuru = [];
+window.selectedGuru = null;
+window.selectedGuruList = [];
+window.isBatchMode = false;
+window.isBatchModeGuru = false;
+window.configPejabat = {};
+let mobileViewMode = "editor"; // 'editor' atau 'preview'
+
+// =============================================================
+// PENGAMAN CETAK: HANYA DOKUMEN YANG SUDAH DIARSIPKAN
+// =============================================================
+function normalizeArchiveText(value) {
+  return String(value ?? "").replace(/\r\n/g, "\n").trim();
+}
+
+function normalizeArchiveDate(value) {
+  const normalized = normalizeArchiveText(value);
+  return normalized.includes("T") ? normalized.split("T")[0] : normalized;
+}
+
+function getCurrentDraftArchivePayload() {
+  const getVal = (id, fallback = "") => document.getElementById(id)?.value ?? fallback;
+  return {
+    nomor: normalizeArchiveText(getVal('in_nomor')),
+    tanggal: normalizeArchiveDate(getVal('in_tanggal')),
+    perihal: normalizeArchiveText(getVal('in_perihal')),
+    penerima: normalizeArchiveText(getVal('in_penerima')),
+    lampiran: normalizeArchiveText(getVal('in_lampiran')),
+    pembuka: normalizeArchiveText(getVal('in_pembuka')),
+    isi: normalizeArchiveText(document.getElementById('in_isi')?.value || ""),
+    tembusan: normalizeArchiveText(getVal('in_tembusan')),
+    serial_id: normalizeArchiveText(getVal('in_serial_id')),
+    layout: getVal('in_layout_type', 'standard')
+  };
+}
+
+function normalizeArchivePayload(record = {}) {
+  return {
+    nomor: normalizeArchiveText(record.nomor),
+    tanggal: normalizeArchiveDate(record.tanggal),
+    perihal: normalizeArchiveText(record.perihal),
+    penerima: normalizeArchiveText(record.penerima),
+    lampiran: normalizeArchiveText(record.lampiran),
+    pembuka: normalizeArchiveText(record.pembuka),
+    isi: normalizeArchiveText(record.isi),
+    tembusan: normalizeArchiveText(record.tembusan),
+    serial_id: normalizeArchiveText(record.sid || record.serial_id),
+    layout: record.layout || 'standard'
+  };
+}
+
+function getArchiveSignature(payload) {
+  return JSON.stringify(normalizeArchivePayload(payload));
+}
+
+function isCurrentDraftArchived() {
+  const targetSignature = getArchiveSignature(getCurrentDraftArchivePayload());
+  const arsip = Array.isArray(window.cacheArsip) ? window.cacheArsip : [];
+  return arsip.some((row) => getArchiveSignature(row) === targetSignature);
+}
+
+function syncArchiveStatusUI() {
+  const statusWrap = document.getElementById('print-archive-status');
+  const statusIcon = document.getElementById('print-status-icon');
+  const statusBadge = document.getElementById('print-status-badge');
+  const statusText = document.getElementById('print-status-text');
+  const printButton = document.getElementById('btn-cetak-surat');
+
+  if (!statusWrap || !statusIcon || !statusBadge || !statusText || !printButton) {
+    return;
+  }
+
+  const isArchived = isCurrentDraftArchived();
+
+  if (isArchived) {
+    statusWrap.className = 'mb-3 rounded-2xl border border-emerald-200 bg-emerald-50/90 p-3 shadow-sm dark:border-emerald-500/30 dark:bg-emerald-500/10';
+    statusIcon.className = 'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100';
+    statusIcon.innerHTML = '<i class="fa-solid fa-circle-check text-sm"></i>';
+    statusBadge.className = 'inline-flex items-center rounded-full bg-emerald-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-100';
+    statusBadge.textContent = 'ARSIP TERSIMPAN';
+    statusText.textContent = 'Surat sudah tercatat dan siap diverifikasi melalui scan.';
+    printButton.disabled = false;
+    printButton.classList.remove('opacity-50', 'cursor-not-allowed');
+    printButton.classList.add('shadow-md');
+    printButton.title = 'Cetak surat sekarang';
+    printButton.setAttribute('aria-disabled', 'false');
+  } else {
+    statusWrap.className = 'mb-3 rounded-2xl border border-amber-200 bg-amber-50/90 p-3 shadow-sm dark:border-amber-500/30 dark:bg-amber-500/10';
+    statusIcon.className = 'flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-100';
+    statusIcon.innerHTML = '<i class="fa-solid fa-triangle-exclamation text-sm"></i>';
+    statusBadge.className = 'inline-flex items-center rounded-full bg-amber-100 px-2.5 py-1 text-[10px] font-bold uppercase tracking-[0.2em] text-amber-700 dark:bg-amber-500/20 dark:text-amber-100';
+    statusBadge.textContent = 'ARSIP BELUM SIAP';
+    statusText.textContent = 'Simpan data terlebih dahulu agar surat dapat diverifikasi setelah dicetak.';
+    printButton.disabled = true;
+    printButton.classList.add('opacity-50', 'cursor-not-allowed');
+    printButton.classList.remove('shadow-md');
+    printButton.title = 'Arsipkan surat terlebih dahulu untuk mencetak';
+    printButton.setAttribute('aria-disabled', 'true');
+  }
+}
+
+// =============================================================
+// INTERFAKS DAN MANAJEMEN SESI LOGIN
+// =============================================================
+function handleLogin(e) {
+  e.preventDefault();
+  setLoading(true, "Memvalidasi Keamanan...");
+  const u = document.getElementById('username').value.trim();
+  const p = document.getElementById('password').value.trim();
+
+  google.script.run.withSuccessHandler(function(res) {
+    setLoading(false);
+    if(res && res.status === "SUCCESS") {
+      const dataSesi = { terautentikasi: true, nama: res.nama, role: res.role, username: res.username };
+      localStorage.setItem("kliksurat_sd_session", JSON.stringify(dataSesi));
+      aktifkanSesiDashboard(res.nama, res.role, res.username);
+      tampilkanToast("success", "AKSES DIBERIKAN", "Selamat datang kembali, " + res.nama);
+    } else {
+      tampilkanToast("error", "AKSES DITOLAK", res ? res.message : "Terjadi kesalahan sistem.");
+    }
+  }).withFailureHandler(function(err) {
+    setLoading(false);
+    tampilkanToast("error", "ERROR SERVER", err.toString());
+  }).prosesLogin(u, p);
+}
+
+function aktifkanSesiDashboard(nama, role, username) {
+  userSessionName = nama;
+  userSessionUsername = username;
+  const userProfile = document.getElementById('user-profile');
+  if (userProfile) userProfile.innerHTML = `<i class="fa fa-user-circle"></i> ${nama}`;
+  
+  // ROLE BASED ACCESS CONTROL (RBAC)
+  const isGuru = (role === "Guru");
+  const btnSettings = document.getElementById('btn-open-settings');
+  const tabKop = document.getElementById('btn-tab-kop');
+  const tabTtd = document.getElementById('btn-tab-ttd');
+  const tabContainer = document.getElementById('sidebar-tabs');
+
+  if (btnSettings) btnSettings.classList.toggle('hidden', isGuru);
+  if (tabKop) tabKop.classList.toggle('hidden', isGuru);
+  if (tabTtd) tabTtd.classList.toggle('hidden', isGuru);
+
+  // Menyesuaikan tampilan grid tab agar proporsional
+  if (tabContainer) {
+    if (isGuru) {
+      tabContainer.classList.replace('grid-cols-5', 'grid-cols-3');
+    } else {
+      tabContainer.classList.replace('grid-cols-3', 'grid-cols-5');
+    }
+  }
+
+  if (!isGuru && btnSettings) {
+     btnSettings.classList.remove('hidden');
+  }
+
+  document.getElementById('login-page').classList.add('hidden');
+  document.getElementById('main-dashboard').classList.remove('hidden');
+  muatAwalSeluruhKonfigurasi();
+}
+
+function periksaSesiLoginOtomatis() {
+  const dataLokal = localStorage.getItem("kliksurat_sd_session");
+  if (dataLokal) {
+    try {
+      const sesi = JSON.parse(dataLokal);
+      // Pastikan data username ada, jika tidak ada (data lama), paksa login ulang
+      if (sesi && sesi.terautentikasi && sesi.username) {
+        aktifkanSesiDashboard(sesi.nama, sesi.role, sesi.username);
+        return; // Keluar agar tidak mematikan loading prematurely
+      } else {
+        localStorage.removeItem("kliksurat_sd_session");
+      }
+    } catch (err) {
+      localStorage.removeItem("kliksurat_sd_session"); // Hapus jika data korup
+    }
+  }
+  setLoading(false);
+}
+
+function handleLogout() {
+  Swal.fire({
+    title: 'Yakin Ingin Keluar?',
+    text: "Sesi kerja Anda akan diakhiri. Pastikan semua data penting telah disimpan.",
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#e11d48', // Warna merah tegas (Rose-600) untuk tanda peringatan
+    cancelButtonColor: '#64748b',  // Warna Slate Grey untuk tombol batal
+    confirmButtonText: '<i class="fa fa-sign-out-alt"></i> Ya, Keluar',
+    cancelButtonText: 'Batal',
+    reverseButtons: true           // Memposisikan tombol batal di kiri agar lebih natural
+  }).then((result) => {
+    if (result.isConfirmed) {
+      prosesLogoutSistem(true);
+    }
+  });
+}
+
+function prosesLogoutSistem(withNotification = false) {
+  setLoading(true, "Mengakhiri sesi...");
+
+  setTimeout(() => {
+    localStorage.removeItem("kliksurat_sd_session");
+    
+    // Reset variabel sesi global
+    userSessionName = "";
+    userSessionUsername = "";
+    
+    // Tutup paksa semua modal yang mungkin masih terbuka
+    const modals = ['modal-profile', 'modal-settings', 'modal-siswa', 'modal-guru', 'modal-about', 'modal-cropper'];
+    modals.forEach(id => {
+      const el = document.getElementById(id);
+      if (el) el.classList.add('hidden');
+    });
+
+    const pwd = document.getElementById('password');
+    if (pwd) pwd.value = "";
+    
+    setLoading(false);
+
+    const dashboard = document.getElementById('main-dashboard');
+    const loginPage = document.getElementById('login-page');
+    
+    if (dashboard) dashboard.classList.add('hidden');
+    if (loginPage) loginPage.classList.remove('hidden');
+    
+    if (withNotification) {
+      Swal.fire({
+        icon: 'success',
+        title: 'Berhasil Keluar',
+        text: 'Sesi aman Anda telah ditutup.',
+        confirmButtonColor: '#0284c7',
+        timer: 1500,
+        showConfirmButton: false
+      });
+    }
+  }, 700);
+}
+
+// =============================================================
+// SINKRONISASI DATABASE & KONFIGURASI KERTAS
+// =============================================================
+function muatAwalSeluruhKonfigurasi() {
+  // Terapkan Tema dari LocalStorage
+  applySavedTheme();
+
+  setLoading(true, "Sinkronisasi Database...");
+  google.script.run.withSuccessHandler(function(config) {
+    setLoading(false);
+    if(!config) return;
+
+    // Masukkan data ke form input kop satu per satu secara pasti
+    if(document.getElementById('in_app_name')) document.getElementById('in_app_name').value = config.App_Name || "KlikSurat";
+    if(document.getElementById('in_npsn_sekolah')) document.getElementById('in_npsn_sekolah').value = config.NPSN_Sekolah || "";
+    if(document.getElementById('in_kop_daerah')) document.getElementById('in_kop_daerah').value = config.Kop_Daerah || "";
+    if(document.getElementById('in_kop_sub')) document.getElementById('in_kop_sub').value = config.Kop_Sub || config.Kop_Sub_Dinas || ""; 
+    if(document.getElementById('in_kop_sekolah')) document.getElementById('in_kop_sekolah').value = config.Kop_Sekolah || "";
+    if(document.getElementById('in_kop_alamat')) document.getElementById('in_kop_alamat').value = config.Kop_Alamat || "";
+    if(document.getElementById('in_kop_kontak')) document.getElementById('in_kop_kontak').value = config.Kop_Kontak || "";
+
+    // Pemuatan data logo dan geometri kertas
+    if(document.getElementById('in_ttd_frasa_tanggal')) document.getElementById('in_ttd_frasa_tanggal').value = config.Ttd_Frasa_Tanggal || "Pada Tanggal";
+    if(document.getElementById('in_logo_kiri')) document.getElementById('in_logo_kiri').value = config.Logo_Kiri_Url || ""; 
+    if(document.getElementById('in_ttd_foto')) document.getElementById('in_ttd_foto').checked = (config.Ttd_Gunakan_Foto === "YA");
+    if(document.getElementById('in_logo_kanan')) document.getElementById('in_logo_kanan').value = config.Logo_Kanan_Url || "";
+    if(document.getElementById('brand-logo-nav')) document.getElementById('brand-logo-nav').src = config.Logo_Kanan_Url || config.Logo_Kiri_Url || globalLogo || "";
+    if(document.getElementById('in_layout_type')) document.getElementById('in_layout_type').value = config.Layout_Type || "standard";
+    if(document.getElementById('in_ukuran_kertas')) document.getElementById('in_ukuran_kertas').value = config.Ukuran_Kertas || "size-f4";
+    if(document.getElementById('in_pilihan_font')) document.getElementById('in_pilihan_font').value = config.Pilihan_Font || "font-serif-official";
+    if(document.getElementById('in_line_spacing')) document.getElementById('in_line_spacing').value = config.Line_Spacing || "1.6";
+    
+    ['atas','bawah','kiri','kanan'].forEach(k => {
+      const el = document.getElementById(`in_margin_${k}`);
+      if(el) el.value = config[`Margin_${k.charAt(0).toUpperCase() + k.slice(1)}`] || "20";
+    });
+    if(document.getElementById('in_satuan_margin')) document.getElementById('in_satuan_margin').value = config.Satuan_Margin || "mm";
+
+    // Pemuatan data spesimen tanda tangan pejabat
+    if(document.getElementById('in_ttd_frasa_ditetapkan')) document.getElementById('in_ttd_frasa_ditetapkan').value = config.Ttd_Frasa_Ditetapkan || "Ditetapkan di";
+    if(document.getElementById('in_ttd_height')) {
+      const h = config.Ttd_Height || "80";
+      document.getElementById('in_ttd_height').value = h;
+      document.getElementById('val_ttd_height').innerText = h;
+    }
+    if(document.getElementById('in_ttd_materai')) document.getElementById('in_ttd_materai').checked = (config.Ttd_Gunakan_Materai === "YA");
+
+    [1,2,3].forEach(n => {
+      const frasaEl = document.getElementById(`p${n}_frasa`);
+      if(n>1 && frasaEl) frasaEl.value = config[`Ttd_Frasa_${n}`] || "";
+      
+      ['jabatan','nama','pangkat','nip'].forEach(p => {
+        const el = document.getElementById(`p${n}_${p}`);
+        if(el) el.value = config[`Ttd_${p.charAt(0).toUpperCase() + p.slice(1)}_${n}`] || "";
+      });
+    });
+
+    // Jalankan sistem pembaca database eksternal setelah konfigurasi siap
+    if (typeof loadKoleksiDatabase === "function") loadKoleksiDatabase();
+    if (typeof muatDataArsip === "function") muatDataArsip();
+    if (typeof loadKodeKlasifikasiSurat === "function") loadKodeKlasifikasiSurat();
+    
+    // Pemuatan data tabel agar angka di dashboard (badges) muncul segera
+    muatTabelSiswa();
+    muatTabelGuru();
+    
+    // Sinkronisasikan seluruh data yang baru masuk agar langsung tampil di kertas preview
+    sinkronisasiLayoutKonfigurasi();
+    
+  // Setel mode tata letak tanda tangan pejabat (1, 2, atau 3 orang)
+  ubahModeLayoutTtd(config.Ttd_Mode_Aktif || "kanan-bawah");
+  const printArea = document.getElementById('print-area');
+  if (printArea) printArea.dataset.pageCount = "0";
+
+  // GENERATE NOMOR OTOMATIS SAAT LOAD
+  mintaNomorOtomatis();
+
+  stabilkanLivePreviewSetelahLayout();
+  }).ambilPengaturan();
+}
+
+function sinkronisasiLayoutKonfigurasi() {
+  const size = document.getElementById('in_ukuran_kertas')?.value || "size-f4";
+  const mt = document.getElementById('in_margin_atas')?.value || 20;
+  const mb = document.getElementById('in_margin_bawah')?.value || 20;
+  const ml = document.getElementById('in_margin_kiri')?.value || 25;
+  const mr = document.getElementById('in_margin_kanan')?.value || 20;
+  const satuan_val = document.getElementById('in_satuan_margin')?.value || "mm";
+
+  // Sinkronisasi lebar measurement box agar akurat dengan lebar kertas asli
+  const mBox = document.getElementById('measurement-box');
+  if (mBox) {
+    mBox.style.width = (size === 'size-f4') ? "215mm" : "210mm";
+    mBox.style.padding = `${mt}${satuan_val} ${mr}${satuan_val} ${mb}${satuan_val} ${ml}${satuan_val}`;
+    mBox.style.fontFamily = document.getElementById('in_pilihan_font')?.value === 'font-serif-official' ? 'Times New Roman' : 'Arial';
+    mBox.style.fontSize = document.getElementById('in_ukuran_font')?.value || '12pt';
+  }
+
+  // Hitung tinggi kertas dan tinggi bersih konten
+  // PENTING: Gunakan variabel lokal yang sudah didefinisikan (mt, mb, satuan_val)
+  let printStyle = document.getElementById('dynamic-print-style');
+  if (!printStyle) {
+    printStyle = document.createElement('style');
+    printStyle.id = 'dynamic-print-style';
+    document.head.appendChild(printStyle);
+  }
+  
+  
+  const sheetW = size === 'size-f4' ? '215mm' : '210mm';
+  const sheetH = size === 'size-f4' ? '330mm' : '297mm';
+  const innerH = `calc(${sheetH} - ${mt}${satuan_val} - ${mb}${satuan_val})`;
+
+  document.documentElement.style.setProperty('--sheet-width', sheetW);
+  document.documentElement.style.setProperty('--sheet-height', sheetH);
+  document.documentElement.style.setProperty('--inner-height', innerH);
+
+  let ukuranFisikKertas = (size === 'size-f4') ? '215mm 330mm' : 'A4';
+  printStyle.innerHTML = `@media print { @page { size: ${ukuranFisikKertas}; margin: 0 !important; } }`;
+
+  updateLivePreview();
+  window.requestAnimationFrame(() => {
+    if (typeof updateLivePreview === "function") updateLivePreview();
+  });
+  stabilkanLivePreviewSetelahLayout();
+}
+
+// =============================================================
+// LIVE PREVIEW ENGINE (SINKRONISASI FORM KE KERTAS)
+// =============================================================
+let webAppUrl = ""; // Global variable untuk menampung URL
+let lastSidForShortening = "";
+let shortUrlCache = "";
+let qrPreviewCache = { text: "", src: "" };
+let livePreviewStabilizerTimer = null;
+
+// Optimalisasi: Gunakan Debounce agar tidak lag saat mengetik cepat
+function debounce(func, wait) {
+  let timeout;
+  return function executedFunction(...args) {
+    const later = () => {
+      clearTimeout(timeout);
+      func(...args);
+    };
+    clearTimeout(timeout);
+    timeout = setTimeout(later, wait);
+  };
+}
+
+/**
+ * Fungsi Perbaikan Cetak: Sinkronisasi paksa DOM dan buka dialog printer
+ */
+function siapkanDanCetak() {
+  // Jalankan update preview secara instan untuk memastikan data paling aktual muncul di DOM
+  menjalankanUpdatePreviewLangsung();
+  
+  // Aktifkan loader sebentar untuk memberi waktu browser merender layout fisik (QR Code, dll)
+  setLoading(true, "Menyiapkan Printer...");
+  setTimeout(() => {
+    setLoading(false);
+    cetakPreviewTerisolasi();
+  }, 450); // Memberikan waktu ekstra untuk rendering QR Code
+}
+
+function cetakPreviewTerisolasi() {
+  const printArea = document.getElementById('print-area');
+  if (!printArea) {
+    window.print();
+    return;
+  }
+
+  const clonedPrintArea = printArea.cloneNode(true);
+  clonedPrintArea.querySelectorAll('#qrcode').forEach((qrBox) => {
+    const qrImages = Array.from(qrBox.querySelectorAll('canvas, img'));
+    qrImages.slice(1).forEach(el => el.remove());
+  });
+
+  const printFrame = document.createElement('iframe');
+  printFrame.style.position = 'fixed';
+  printFrame.style.right = '0';
+  printFrame.style.bottom = '0';
+  printFrame.style.width = '0';
+  printFrame.style.height = '0';
+  printFrame.style.border = '0';
+  document.body.appendChild(printFrame);
+
+  const frameDoc = printFrame.contentWindow.document;
+  frameDoc.open();
+  const content = `<!DOCTYPE html>
+    <html lang="id">
+    <head>
+      <meta charset="UTF-8">
+      <title>Cetak Surat</title>
+      <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700&family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+      <style>
+        :root {
+          --sheet-width: ${getComputedStyle(document.documentElement).getPropertyValue('--sheet-width') || '210mm'};
+          --sheet-height: ${getComputedStyle(document.documentElement).getPropertyValue('--sheet-height') || '297mm'};
+          --inner-height: ${getComputedStyle(document.documentElement).getPropertyValue('--inner-height') || 'calc(297mm - 20mm - 20mm)'};
+          --brand-color: ${getComputedStyle(document.documentElement).getPropertyValue('--brand-color') || '#0284c7'};
+          --line-spacing: ${document.getElementById('in_line_spacing')?.value || '1.6'};
+        }
+        @page { size: var(--sheet-width) var(--sheet-height); margin: 0 !important; }
+        * {
+          box-sizing: border-box;
+          border-width: 0;
+          border-style: solid;
+          border-color: #e5e7eb;
+          overflow-wrap: anywhere;
+          word-wrap: break-word;
+          tab-size: 4;
+          -moz-tab-size: 4;
+        }
+        h1, h2, h3, h4, h5, h6, p {
+          margin: 0;
+        }
+        h1, h2, h3, h4, h5, h6 {
+          font-size: inherit;
+          font-weight: inherit;
+        }
+        img {
+          display: block;
+          max-width: 100%;
+          height: auto;
+        }
+        table {
+          text-indent: 0;
+          border-color: inherit;
+          border-collapse: collapse;
+        }
+        html, body {
+          background: white !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          width: 100% !important;
+          height: auto !important;
+          overflow: visible !important;
+          -webkit-print-color-adjust: exact;
+          print-color-adjust: exact;
+        }
+        .font-serif-official { font-family: 'Times New Roman', Times, serif; }
+        .font-sans-inter { font-family: 'Inter', sans-serif; }
+        .font-sans-classic { font-family: Arial, Helvetica, sans-serif; }
+        .text-black { color: #000; }
+        .text-right { text-align: right; }
+        .text-center { text-align: center; }
+        .text-justify { text-align: justify; }
+        .font-bold { font-weight: 700; }
+        .font-medium { font-weight: 500; }
+        .font-mono { font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace; }
+        .italic { font-style: italic; }
+        .underline { text-decoration: underline; }
+        .uppercase { text-transform: uppercase; }
+        .relative { position: relative; }
+        .absolute { position: absolute; }
+        .left-0 { left: 0; }
+        .bottom-0 { bottom: 0; }
+        .flex { display: flex !important; }
+        .flex-1 { flex: 1 1 0%; }
+        .flex-col { flex-direction: column; }
+        .items-center { align-items: center; }
+        .items-start { align-items: flex-start; }
+        .items-end { align-items: flex-end; }
+        .justify-between { justify-content: space-between !important; }
+        .justify-end { justify-content: flex-end; }
+        .shrink-0 { flex-shrink: 0; }
+        .min-w-0 { min-width: 0; }
+        .hidden { display: none !important; }
+        .whitespace-pre-wrap { white-space: pre-wrap !important; }
+        .whitespace-pre-line { white-space: pre-line; }
+        .leading-normal { line-height: var(--line-spacing); }
+        .leading-tight { line-height: 1.25; }
+        .select-none { user-select: none; }
+        .object-contain { object-fit: contain; }
+        .bg-white { background: #fff; }
+        .border { border-width: 1px; border-style: solid; }
+        .border-slate-100 { border-color: #f1f5f9; }
+        .border-l-2 { border-left-width: 2px; border-left-style: solid; }
+        .border-double { border-style: double; }
+        .border-black { border-color: #000; }
+        .rounded-md { border-radius: 0.375rem; }
+        .opacity-80 { opacity: 0.8; }
+        .w-full { width: 100%; }
+        .w-20 { width: 5rem; }
+        .h-24 { height: 6rem; }
+        .h-20 { height: 5rem; }
+        .h-16 { height: 4rem; }
+        .w-\\[280px\\] { width: 280px; }
+        .w-\\[260px\\] { width: 260px; }
+        .w-\\[300px\\] { width: 300px; }
+        .w-\\[60\\%\\] { width: 60%; }
+        .w-\\[40\\%\\] { width: 40%; }
+        .w-\\[90px\\] { width: 90px; }
+        .w-\\[15px\\] { width: 15px; }
+        .text-\\[6pt\\] { font-size: 6pt; }
+        .text-\\[8pt\\] { font-size: 8pt; }
+        .text-\\[9pt\\] { font-size: 9pt; }
+        .text-\\[12pt\\] { font-size: 12pt; }
+        .text-\\[15pt\\] { font-size: 15pt; }
+        .text-\\[\\#0f172a\\] { color: #0f172a; }
+        .text-slate-700 { color: #334155; }
+        .p-0\\.5 { padding: 0.125rem; }
+        .pl-2 { padding-left: 0.5rem; }
+        .pl-24 { padding-left: 6rem; }
+        .px-4 { padding-left: 1rem; padding-right: 1rem; }
+        .pb-1\\.5 { padding-bottom: 0.375rem; }
+        .pt-4 { padding-top: 1rem; }
+        .mb-0\\.5 { margin-bottom: 0.125rem; }
+        .mb-1 { margin-bottom: 0.25rem; }
+        .mb-2 { margin-bottom: 0.5rem; }
+        .mb-4 { margin-bottom: 1rem; }
+        .mb-5 { margin-bottom: 1.25rem; }
+        .mb-6 { margin-bottom: 1.5rem; }
+        .mt-1 { margin-top: 0.25rem; }
+        .mt-2 { margin-top: 0.5rem; }
+        .mt-8 { margin-top: 2rem; }
+        .max-w-\\[230px\\] { max-width: 230px; }
+        .gap-8 { gap: 2rem; }
+        .indent-\\[40px\\] { text-indent: 40px; }
+        .border-b-\\[4px\\] { border-bottom-width: 4px; }
+
+                /* Quill Specific Styles for Print */
+        .preview-rich-content { 
+          white-space: pre-wrap !important; 
+          line-height: var(--line-spacing) !important;
+          tab-size: 4;
+        }
+
+                }
+        .preview-rich-content table { border-collapse: collapse; width: 100%; margin-bottom: 1em; }
+        .preview-rich-content table td, .preview-rich-content table th { border: 1px solid black; padding: 4px 8px; }
+        
+        /* Konsistensi Border Tabel sesuai setting TinyMCE saat cetak */
+        .preview-rich-content table[border="0"] td,
+        .preview-rich-content table[border="0"] th,
+        .preview-rich-content table[style*="border-width: 0px"] td,
+        .preview-rich-content table[style*="border-width: 0px"] th,
+        .preview-rich-content table[style*="border: 0px"] td,
+        .preview-rich-content table[style*="border: 0px"] th,
+        .preview-rich-content table[style*="border-style: none"] td,
+        .preview-rich-content table[style*="border-style: none"] th { 
+            border: none !important; 
+        }
+
+        .preview-rich-content p { margin-bottom: 0; }
+        .ql-align-center { text-align: center !important; }
+        .ql-align-right { text-align: right !important; }
+        .ql-align-justify { text-align: justify !important; }
+        .ql-indent-1 { padding-left: 3em !important; text-indent: 0 !important; }
+        .ql-indent-2 { padding-left: 6em !important; text-indent: 0 !important; }
+        .ql-indent-3 { padding-left: 9em !important; text-indent: 0 !important; }
+        .ql-indent-4 { padding-left: 12em !important; text-indent: 0 !important; }
+        .ql-indent-5 { padding-left: 15em !important; text-indent: 0 !important; }
+        .ql-indent-6 { padding-left: 18em !important; text-indent: 0 !important; }
+        .ql-indent-7 { padding-left: 21em !important; text-indent: 0 !important; }
+        .ql-indent-8 { padding-left: 24em !important; text-indent: 0 !important; }
+        
+        .preview-rich-content ul, .preview-rich-content ol {
+          padding-left: 1.5em;
+          margin: 0.5em 0;
+        }
+        .preview-rich-content li {
+          position: relative;
+          padding-left: 1.5em;
+          list-style: none;
+        }
+        .preview-rich-content ul > li::before {
+          content: '•';
+          position: absolute;
+          left: 0;
+        }
+
+        .page-sheet table { border-collapse: collapse; }
+        .align-top, .align-top td { vertical-align: top; }
+        .kop-surat h4 { font-size: 12pt !important; font-weight: 700 !important; line-height: 1.25 !important; margin: 0 !important; }
+        .kop-surat h3 { font-size: 12pt !important; font-weight: 700 !important; line-height: 1.25 !important; margin: 0 !important; }
+        .kop-surat p { line-height: 1.25 !important; margin: 0 !important; }
+        #print-area {
+          display: block !important;
+          width: var(--sheet-width) !important;
+          margin: 0 !important;
+          padding: 0 !important;
+          background: white !important;
+        }
+        .page-sheet {
+          box-shadow: none !important;
+          margin: 0 !important;
+          border: none !important;
+          width: var(--sheet-width) !important;
+          height: var(--sheet-height) !important;
+          line-height: var(--line-spacing) !important;
+          overflow: hidden !important;
+          break-after: page !important;
+          page-break-after: always !important;
+          animation: none !important;
+          transform: none !important;
+        }
+        .page-sheet:last-child {
+          break-after: auto !important;
+          page-break-after: auto !important;
+        }
+        .content-wrapper {
+          height: var(--inner-height) !important;
+          overflow: hidden !important;
+        }
+      </style>
+    </head>
+    <body>${clonedPrintArea.outerHTML}</body>
+    </html>`;
+  frameDoc.write(content);
+  frameDoc.close();
+
+  const runPrint = () => {
+    printFrame.contentWindow.focus();
+    printFrame.contentWindow.print();
+    setTimeout(() => printFrame.remove(), 1000);
+  };
+
+  setTimeout(runPrint, 700);
+}
+
+/**
+ * GOOGLE DOCS AUTO-PAGINATION ENGINE
+ * Membagi konten surat ke dalam beberapa halaman fisik secara real-time.
+ */
+function updateLivePreview() {
+  menjalankanUpdatePreviewLangsung();
+  if (typeof syncArchiveStatusUI === 'function') {
+    syncArchiveStatusUI();
+  }
+}
+
+function stabilkanLivePreviewSetelahLayout() {
+  clearTimeout(livePreviewStabilizerTimer);
+
+  const rerender = () => {
+    window.requestAnimationFrame(() => {
+      window.requestAnimationFrame(() => {
+        if (typeof menjalankanUpdatePreviewLangsung === "function") {
+          menjalankanUpdatePreviewLangsung();
+        }
+      });
+    });
+  };
+
+  livePreviewStabilizerTimer = setTimeout(rerender, 300);
+  if (document.fonts && document.fonts.ready) {
+    document.fonts.ready.then(rerender).catch(() => {});
+  }
+}
+
+let editorReady = false;
+
+function initTinyMCEEditor() {
+  if (typeof tinymce === 'undefined') return;
+  
+  tinymce.init({
+    selector: '#quill-isi',
+    license_key: 'gpl', // Menggunakan mode bebas/GPL
+    height: 400,
+    menubar: false,
+    plugins: 'table lists link image charmap preview anchor searchreplace visualblocks code fullscreen insertdatetime media help wordcount',
+    toolbar: 'undo redo | blocks | fontfamily fontsize | bold italic underline forecolor backcolor | alignleft aligncenter alignright alignjustify | bullist numlist outdent indent | table link image | removeformat code',
+    toolbar_mode: 'wrap', // Memaksa semua menu toolbar muncul (wrap) tanpa menu titik tiga
+    promotion: false, // Menghilangkan tombol upgrade yang mengganggu
+    branding: false, // Menghilangkan logo TinyMCE di status bar
+    content_style: 'body { font-family: Arial, Helvetica, sans-serif; font-size: 11pt; line-height: 1.6; }',
+    setup: function (editor) {
+      // Shortcut Ctrl+S di dalam editor
+      editor.addShortcut('ctrl+s', 'Simpan Data', function () {
+        prosesSimpanData();
+      });
+
+      // Menangani tombol Tab agar melakukan indentasi di dalam editor
+      editor.on('keydown', function (e) {
+        if (e.keyCode === 9) { // 9 adalah kode kunci untuk tombol Tab
+          if (e.shiftKey) {
+            editor.execCommand('Outdent');
+          } else {
+            editor.execCommand('Indent');
+          }
+          e.preventDefault();
+          e.stopPropagation();
+        }
+      });
+      editor.on('init', function () {
+        editorReady = true;
+        const savedVal = document.getElementById('in_isi').value;
+        if (savedVal) editor.setContent(savedVal);
+      });
+      editor.on('change input undo redo', function () {
+        const content = editor.getContent();
+        document.getElementById('in_isi').value = content;
+        updateLivePreview();
+      });
+    },
+    font_family_formats: 'Arial=arial,helvetica,sans-serif; Times New Roman=times new roman,times,serif; Courier New=courier new,courier,monospace;',
+    table_appearance_options: true,
+    table_resize_bars: true,
+    table_default_attributes: { border: '0' } // Mengubah default border menjadi 0
+  });
+}
+
+function setIsiEditorValue(value) {
+  const hiddenField = document.getElementById('in_isi');
+  if (!hiddenField) return;
+  hiddenField.value = value || '';
+
+  if (editorReady && tinymce.get('quill-isi')) {
+    tinymce.get('quill-isi').setContent(value || '');
+  }
+}
+
+// =============================================================
+// SHORTCUT KEYBOARD GLOBAL
+// =============================================================
+document.addEventListener('keydown', function(e) {
+  // Shortcut Ctrl+S atau Cmd+S untuk Simpan Data
+  if ((e.ctrlKey || e.metaKey) && e.key === 's') {
+    e.preventDefault();
+    prosesSimpanData();
+  }
+});
+
+/**
+ * Global Helper untuk Escaping HTML
+ */
+const escapeHTML = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+  '&': '&amp;',
+  '<': '&lt;',
+  '>': '&gt;',
+  '"': '&quot;',
+  "'": '&#39;'
+}[char]));
+
+/**
+ * ENGINE: Variable Resolver - Mengganti {{variabel}} dengan data asli
+ */
+function resolveVariables(text) {
+  if (!text) return "";
+  let result = text;
+
+  // Fungsi Pembantu: Mengubah teks menjadi format Proper Case (Kapital Setiap Kata)
+  const toProperCase = (str) => {
+    if (!str || typeof str !== 'string') return str;
+    return str.toLowerCase().replace(/(^|\s)\S/g, (L) => L.toUpperCase());
+  };
+
+  // 1. Variabel Pejabat (KS) - Mengambil data live dari sidebar agar real-time
+  const getTtdLive = (id, key, fallback) => {
+    const val = document.getElementById(id)?.value;
+    return (val && val.trim() !== "") ? val : (window.configPejabat[key] || fallback);
+  };
+  // KECUALI: nama_ks (Tetap)
+  result = result.replace(/{{nama_ks}}/g, getTtdLive('p1_nama', 'nama', ".................."));
+  result = result.replace(/{{nip_ks}}/g, getTtdLive('p1_nip', 'nip', ".................."));
+  // PROPER: jabatan_ks, pangkat_ks
+  result = result.replace(/{{jabatan_ks}}/g, toProperCase(getTtdLive('p1_jabatan', 'jabatan', "Kepala Sekolah")));
+  result = result.replace(/{{pangkat_ks}}/g, getTtdLive('p1_pangkat', 'pangkat', ""));
+
+  // 2. Variabel Siswa
+  const s = window.selectedSiswa || {};
+  // KECUALI: nama_siswa (Tetap)
+  result = result.replace(/{{nama_siswa}}/g, s.Nama || "..................");
+  result = result.replace(/{{nisn}}/g, s.NISN || "..................");
+  result = result.replace(/{{nis}}/g, s.NIS || "..................");
+  // PROPER: tempat_lahir, alamat lengkap, ket_lulus
+  result = result.replace(/{{tempat_lahir}}/g, toProperCase(s.Tempat_Lahir || ".................."));
+  result = result.replace(/{{tanggal_lahir}}/g, formatTanggalIndo(s.Tanggal_Lahir));
+  result = result.replace(/{{dusun}}/g, toProperCase(s.Dusun || ".................."));
+  result = result.replace(/{{desa}}/g, toProperCase(s.Desa || ".................."));
+  result = result.replace(/{{rt}}/g, s.RT || "...");
+  result = result.replace(/{{rw}}/g, s.RW || "...");
+  result = result.replace(/{{kecamatan}}/g, toProperCase(s.Kecamatan || ".................."));
+  result = result.replace(/{{kabupaten}}/g, toProperCase(s.Kabupaten || ".................."));
+  // KECUALI: nama_ayah, nama_ibu (Tetap)
+  result = result.replace(/{{nama_ayah}}/g, s.Nama_Ayah || "..................");
+  result = result.replace(/{{nama_ibu}}/g, s.Nama_Ibu || "..................");
+  result = result.replace(/{{kelas}}/g, s.Kelas || "..................");
+  result = result.replace(/{{tahun_ajaran}}/g, s.Tahun_Ajaran || "..................");
+  // KECUALI: va_pip (no_va), rek_pip (no_rek) (Tetap)
+  result = result.replace(/{{va_pip}}/g, s.VA_PIP || "-");
+  result = result.replace(/{{rek_pip}}/g, s.Rek_PIP || "-");
+  result = result.replace(/{{nomor_ijazah}}/g, s.Nomor_Ijazah || "..................");
+  result = result.replace(/{{ket_lulus}}/g, toProperCase(s.Ket_Lulus || ".................."));
+
+  // 3. Variabel Guru
+  const g = window.selectedGuru || {};
+  result = result.replace(/{{nama_guru}}/g, g.Nama || "..................");
+  result = result.replace(/{{nip_guru}}/g, g.NIP || "..................");
+  result = result.replace(/{{nuptk_guru}}/g, g.NUPTK || "..................");
+  // PROPER: jabatan, pangkat, unit, tugas
+  result = result.replace(/{{jabatan_guru}}/g, g.Jabatan || "..................");
+  result = result.replace(/{{pangkat_guru}}/g, g.Pangkat_Golongan || "..................");
+  result = result.replace(/{{unit_kerja}}/g, toProperCase(g.Unit_Kerja || ".................."));
+  result = result.replace(/{{tugas_utama}}/g, toProperCase(g.Tugas_Utama || ".................."));
+  result = result.replace(/{{tugas_tambahan}}/g, toProperCase(g.Tugas_Tambahan || ".................."));
+
+  // 3. Variabel Nilai (1-10)
+  const mapelNames = [
+    "Pendidikan Agama dan Budi Pekerti",
+    "Pendidikan Pancasila",
+    "Bahasa Indonesia",
+    "Matematika",
+    "Ilmu Pengetahuan Alam dan Sosial",
+    "Pendidikan Jasmani, Olahraga, dan Kesehatan",
+    "Seni dan Budaya",
+    "Bahasa Inggris",
+    "Bahasa Madura",
+    "Baca Tulis Al Quran (BTA)"
+  ];
+
+  mapelNames.forEach((name, i) => {
+    result = result.replace(new RegExp(`{{nilai_${i+1}}}`, 'g'), s[name] || "0");
+  });
+
+  // 4. Variabel Sekolah (Identitas KOP & Global)
+  const getKopLive = (id, fallback) => {
+    const val = document.getElementById(id)?.value;
+    return (val && val.trim() !== "") ? val : fallback;
+  };
+  // KECUALI: nama_sekolah (Tetap)
+  result = result.replace(/{{nama_sekolah}}/g, getKopLive('in_kop_sekolah', "SD Negeri ..."));
+  result = result.replace(/{{npsn_sekolah}}/g, getKopLive('in_npsn_sekolah', "........"));
+  result = result.replace(/{{alamat_sekolah}}/g, getKopLive('in_kop_alamat', "........"));
+  result = result.replace(/{{kontak_sekolah}}/g, getKopLive('in_kop_kontak', "........"));
+  // PROPER: daerah, sub_dinas
+  result = result.replace(/{{daerah_sekolah}}/g, toProperCase(getKopLive('in_kop_daerah', "........")));
+  result = result.replace(/{{sub_dinas}}/g, toProperCase(getKopLive('in_kop_sub', "........")));
+
+  // 5. Variabel Dokumen
+  result = result.replace(/{{nomor_surat}}/g, document.getElementById('in_nomor')?.value || "........");
+  // PROPER: perihal
+  result = result.replace(/{{tanggal_surat}}/g, formatTanggalIndo(document.getElementById('in_tanggal')?.value));
+  result = result.replace(/{{perihal}}/g, toProperCase(document.getElementById('in_perihal')?.value || "........"));
+
+  return result;
+}
+
+function menjalankanUpdatePreviewLangsung() {
+  const printArea = document.getElementById('print-area');
+  if (!printArea) return;
+
+  printArea.innerHTML = "";
+  let pageCount = 0;
+  
+  // Tentukan list entitas (Bisa Siswa atau Guru)
+  let activeList = [null];
+  if (window.isBatchMode && window.selectedSiswaList.length > 0) activeList = window.selectedSiswaList;
+  else if (window.isBatchModeGuru && window.selectedGuruList.length > 0) activeList = window.selectedGuruList;
+  else if (window.selectedSiswa) activeList = [window.selectedSiswa];
+  else if (window.selectedGuru) activeList = [window.selectedGuru];
+  
+  // Integrasi Resolver: Semua input diproses dulu variabelnya
+  const getRawVal = (id, fallback = "") => document.getElementById(id)?.value ?? fallback;
+  
+  activeList.forEach((item, index) => {
+    // Swap context berdasarkan tipe data yang masuk
+    if (item && item.NISN) window.selectedSiswa = item;
+    else if (item && item.NIP) window.selectedGuru = item;
+
+    const getVal = (id, fallback = "") => resolveVariables(document.getElementById(id)?.value ?? fallback);
+
+  const layoutType = getRawVal('in_layout_type', 'standard');
+  const previousPageCount = parseInt(printArea.dataset.pageCount || "0", 10);
+  const nl2br = (value) => escapeHTML(value).replace(/\n/g, '<br>');
+  const isValidUrl = (url) => /^https?:\/\//i.test(String(url || ""));
+
+    const size = getVal('in_ukuran_kertas', "size-f4");
+  const font = getVal('in_pilihan_font', "font-serif-official");
+  const fontSize = getVal('in_ukuran_font', "12pt");
+  const marginSatuan = "mm"; // Paksa mm untuk kalkulasi presisi
+  const margins = {
+    t: getVal('in_margin_atas', 20),
+    b: getVal('in_margin_bawah', 20),
+    l: getVal('in_margin_kiri', 25),
+    r: getVal('in_margin_kanan', 20)
+  };
+  const sheetHeightMm = size === 'size-f4' ? 330 : 297;
+  const sheetWidth = size === 'size-f4' ? '215mm' : '210mm';
+  const sheetHeight = size === 'size-f4' ? '330mm' : '297mm';
+  document.documentElement.style.setProperty('--sheet-width', sheetWidth);
+  document.documentElement.style.setProperty('--sheet-height', sheetHeight);
+  document.documentElement.style.setProperty('--inner-height', `calc(${sheetHeight} - ${margins.t}${marginSatuan} - ${margins.b}${marginSatuan})`);
+  const pxPerMm = 96 / 25.4;
+  const fallbackInnerHeight = Math.max(100, (sheetHeightMm - parseFloat(margins.t) - parseFloat(margins.b)) * pxPerMm);
+
+  let currentPage = null;
+  let currentContent = null;
+
+  
+  const createNewPage = () => {
+    const pageNumber = pageCount + 1;
+    const p = document.createElement('div');
+    p.className = `page-sheet shadow-2xl text-black ${size} ${font}`;
+    const spacing = document.getElementById('in_line_spacing')?.value || "1.6";
+    p.style.lineHeight = spacing;
+    if (pageNumber > previousPageCount) p.classList.add('page-enter');
+    p.dataset.pageNumber = pageNumber;
+    p.style.fontSize = fontSize;
+    p.style.padding = `${margins.t}${marginSatuan} ${margins.r}${marginSatuan} ${margins.b}${marginSatuan} ${margins.l}${marginSatuan}`;
+    p.innerHTML = `<div class="content-wrapper" style="height: var(--inner-height); position: relative; box-sizing: border-box; min-height: 1px; overflow: hidden;"></div>`;
+    return p;
+  };
+
+  const appendNewPage = () => {
+    const page = createNewPage();
+    printArea.appendChild(page);
+    pageCount++;
+    currentPage = page;
+    currentContent = page.querySelector('.content-wrapper');
+  };
+
+  const getInnerHeight = () => {
+    if (!currentContent) return fallbackInnerHeight;
+    const measured = currentContent.clientHeight || currentContent.getBoundingClientRect().height;
+    return measured > 20 ? measured : fallbackInnerHeight;
+  };
+
+  const pageOverflows = () => currentContent.scrollHeight > getInnerHeight() + 2;
+
+  const addBlock = (block) => {
+    let attempts = 0;
+
+    while (attempts < 6) {
+      currentContent.appendChild(block);
+      if (!pageOverflows()) {
+        return block;
+      }
+
+      currentContent.removeChild(block);
+      appendNewPage();
+      attempts += 1;
+    }
+
+    currentContent.appendChild(block);
+    return block;
+  };
+
+  const addHtmlBlock = (html, className = "") => {
+    const wrapper = document.createElement('div');
+    if (className) wrapper.className = className;
+    wrapper.innerHTML = html;
+    return addBlock(wrapper);
+  };
+
+  const addQuillHtmlBlock = (html) => {
+    const wrapper = document.createElement('div');
+    wrapper.className = 'preview-rich-content';
+    wrapper.innerHTML = html;
+    addBlock(wrapper);
+  };
+
+  const addParagraph = (text) => {
+    const cleanText = String(text || "");
+    if (cleanText.trim() === "") {
+      const spacer = document.createElement('div');
+      spacer.style.height = "1em";
+      addBlock(spacer);
+      return;
+    }
+
+    const paragraph = document.createElement('p');
+    paragraph.className = "mb-2 text-justify";
+    paragraph.textContent = cleanText;
+    addBlock(paragraph);
+
+    if (!pageOverflows()) return;
+    if (paragraph.parentNode !== currentContent) return;
+
+    currentContent.removeChild(paragraph);
+    const words = cleanText.split(/(\s+)/).filter(part => part.length > 0);
+    let active = document.createElement('p');
+    active.className = "mb-2 text-justify";
+    currentContent.appendChild(active);
+
+    words.forEach((word) => {
+      const previous = active.textContent;
+      active.textContent += word;
+      if (pageOverflows() && previous !== "") {
+        active.textContent = previous.trimEnd();
+        appendNewPage();
+        active = document.createElement('p');
+        active.className = "indent-[40px] mb-2 text-justify";
+        active.textContent = word.trimStart();
+        currentContent.appendChild(active);
+      }
+    });
+  };
+
+  const forcePageBreak = () => {
+    if (currentContent.children.length === 0 && pageCount > 1) return;
+    appendNewPage();
+  };
+
+  appendNewPage();
+
+  const lKiri = getVal('in_logo_kiri');
+  const lKanan = getVal('in_logo_kanan');
+  addHtmlBlock(`
+    <div class="kop-surat flex items-center border-b-[4px] border-double border-black pb-1.5 mb-5 select-none shrink-0">
+    ${isValidUrl(lKiri) ? `<img class="w-20 h-24 object-contain shrink-0" src="${escapeHTML(lKiri)}" alt="">` : ''}
+    <div class="flex-1 text-center px-4 min-w-0">
+      <h4 class="text-[12pt] font-bold uppercase leading-tight">${escapeHTML(getVal('in_kop_daerah'))}</h4>
+      <h4 class="text-[12pt] font-bold uppercase leading-tight">${escapeHTML(getVal('in_kop_sub'))}</h4>
+      <h4 class="text-[12pt] font-bold uppercase leading-tight">${escapeHTML(getVal('in_kop_sekolah'))}</h4>
+      <p class="text-[9pt] leading-tight mt-1">${escapeHTML(getVal('in_kop_alamat'))}</p>
+      <p class="text-[9pt] italic leading-tight mt-0.5">${escapeHTML(getVal('in_kop_kontak'))}</p>
+    </div>
+    ${isValidUrl(lKanan) ? `<img class="w-20 h-24 object-contain shrink-0" src="${escapeHTML(lKanan)}" alt="">` : ''}
+    </div>`);
+
+  const tglIndo = formatTanggalIndo(getVal('in_tanggal'));
+
+  if (layoutType === "centered") {
+    // Layout KHUSUS: Judul dan Nomor di Tengah (SKL / SK)
+    addHtmlBlock(`
+      <div class="text-center mb-8 mt-4">
+        <h2 class="text-[14pt] font-bold uppercase underline decoration-1 underline-offset-4">${escapeHTML(getVal('in_perihal') || 'SURAT KETERANGAN')}</h2>
+        <p class="text-[12pt] mt-1">Nomor: ${escapeHTML(getVal('in_nomor') || '...')}</p>
+      </div>
+    `);
+  } else {
+    // Layout STANDARD: Metadata di Kiri
+    addHtmlBlock(`
+      <div class="metadata-surat w-full mb-6">
+      <table class="w-full">
+        <tr class="align-top">
+          <td class="w-[60%]">
+            <table class="w-full">
+              <tr><td class="w-[90px]">Nomor</td><td class="w-[15px]">:</td><td>${escapeHTML(getVal('in_nomor') || '...')}</td></tr>
+              <tr><td>Sifat</td><td>:</td><td>${escapeHTML(getVal('in_sifat'))}</td></tr>
+              <tr><td>Lampiran</td><td>:</td><td>${escapeHTML(getVal('in_lampiran') || '-')}</td></tr>
+              <tr><td>Perihal</td><td>:</td><td class="font-bold">${escapeHTML(getVal('in_perihal') || '...')}</td></tr>
+            </table>
+          </td>
+          <td class="w-[40%] text-right">${escapeHTML(getVal('in_lokasi'))}, ${escapeHTML(tglIndo)}</td>
+        </tr>
+      </table></div>`);
+  }
+
+  const isiPenerima = getVal('in_penerima');
+  if (isiPenerima.trim() !== "") {
+    addHtmlBlock(`<div class="mb-6"><p>${escapeHTML(getVal('in_label_penerima'))}</p><div class="font-bold whitespace-pre-wrap">${nl2br(isiPenerima)}</div></div>`);
+  }
+
+  addHtmlBlock(`<p class="mb-4">${escapeHTML(getVal('in_pembuka') ,)}</p>`);
+
+  // Isi surat diproses variabelnya (TinyMCE Content)
+  const isiSurat = resolveVariables(getRawVal('in_isi'));
+  if (isiSurat.trim() !== "") {
+    if (/<[a-z][\s\S]*>/i.test(isiSurat)) {
+      const richWrapper = document.createElement('div');
+      richWrapper.innerHTML = isiSurat;
+      const childNodes = Array.from(richWrapper.childNodes);
+      childNodes.forEach((node) => {
+        if (node.nodeType === Node.ELEMENT_NODE) {
+          addQuillHtmlBlock(node.outerHTML);
+        } else if (node.nodeType === Node.TEXT_NODE && node.textContent.trim() !== '') {
+          addParagraph(node.textContent);
+        }
+      });
+    } else {
+      const lines = isiSurat.split('\n');
+      lines.forEach(line => {
+        if (line.trim() === "---") {
+          forcePageBreak();
+          return;
+        }
+
+        if (line.includes(" : ")) {
+          let parts = line.split(" : ");
+          addHtmlBlock(`<table style="width: calc(100% - 40px); margin: 5px 0 5px 40px; table-layout: fixed;">
+            <tr><td style="width: 130px; vertical-align: top;">${escapeHTML(parts[0].trim())}</td>
+            <td style="width: 20px; vertical-align: top;">:</td>
+            <td style="vertical-align: top;">${escapeHTML(parts.slice(1).join(" : ").trim())}</td></tr></table>`);
+        } else {
+          addParagraph(line);
+        }
+      });
+    }
+  }
+
+  const finalBlock = document.createElement('div');
+  finalBlock.className = "mt-8 relative";
+  
+  const ttdDiv = document.createElement('div');
+  ttdDiv.id = "canvas-area-ttd";
+  finalBlock.appendChild(ttdDiv);
+  renderKomponenSpesimenTtd(ttdDiv);
+
+  const footerBlock = document.createElement('div');
+  const tembusanText = getVal('in_tembusan');
+  footerBlock.id = "active-footer-logic";
+  footerBlock.className = "absolute left-0 bottom-0 max-w-[230px] text-[9pt]";
+  footerBlock.innerHTML = `
+    <div class="flex flex-col items-start opacity-80">
+      <div class="flex flex-col items-center">
+        <div id="qrcode" class="p-0.5 border border-slate-100 rounded-md bg-white" style="width: 69px; height: 69px; display: flex; align-items: center; justify-content: center;"></div>
+        <span class="text-[6pt] mt-1 font-mono text-[#0f172a]">Verifikasi Dokumen</span>
+      </div>
+    </div>
+    <div id="container_tembusan" class="${tembusanText.trim() ? '' : 'hidden'} mt-2">
+      <p class="font-bold underline mb-0.5">Tembusan:</p>
+      <div id="view_tembusan" class="whitespace-pre-wrap italic leading-tight border-l-2 border-slate-100 pl-2">${nl2br(tembusanText)}</div>
+    </div>`;
+  finalBlock.appendChild(footerBlock);
+
+  currentContent.appendChild(finalBlock);
+  renderQRCodeVerifikasiInto(footerBlock);
+  const finalOverflowPx = currentContent.scrollHeight - getInnerHeight();
+  if (finalOverflowPx > 24 && currentContent.children.length > 1) {
+    currentContent.removeChild(finalBlock);
+    appendNewPage();
+    currentContent.appendChild(finalBlock);
+  }
+  }); // End of listSiswa loop
+
+  document.getElementById('current-page-val').innerText = pageCount;
+  printArea.dataset.pageCount = pageCount;
+}
+
+/**
+ * Helper: Render QR Code ke kontainer footer yang aktif
+ */
+function renderQRCodeVerifikasiInto(footerElement) {
+  const inpTembusan = document.getElementById('in_tembusan')?.value || "";
+  const viewTembusan = footerElement.querySelector('#view_tembusan');
+  const contTembusan = footerElement.querySelector('#container_tembusan');
+  
+  if (viewTembusan && contTembusan && inpTembusan.trim() !== "") {
+    contTembusan.classList.remove('hidden');
+    viewTembusan.innerText = inpTembusan;
+  }
+
+  const qrContainer = footerElement.querySelector('#qrcode');
+  if (qrContainer) {
+    const sid = document.getElementById('in_serial_id').value || "VALID";
+    let qrText = `VERIFIED DOCUMENT\nID: ${sid}`;
+    if (webAppUrl && webAppUrl.includes('/exec')) {
+       qrText = webAppUrl + (webAppUrl.includes('?') ? '&' : '?') + "id=" + sid + "&mode=1";
+    }
+    qrContainer.style.width = '69px';
+    qrContainer.style.height = '69px';
+    qrContainer.style.display = 'flex';
+    qrContainer.style.alignItems = 'center';
+    qrContainer.style.justifyContent = 'center';
+    qrContainer.style.backgroundColor = '#ffffff';
+
+    const paintQrImage = (src) => {
+      qrContainer.innerHTML = "";
+      const img = document.createElement('img');
+      img.src = src;
+      img.alt = "QR Verifikasi";
+      img.style.display = 'block';
+      img.style.width = '65px';
+      img.style.height = '65px';
+      img.style.maxWidth = '65px';
+      img.style.maxHeight = '65px';
+      qrContainer.appendChild(img);
+    };
+
+    if (qrPreviewCache.text === qrText && qrPreviewCache.src) {
+      paintQrImage(qrPreviewCache.src);
+      return;
+    }
+
+    if (typeof QRCode === "undefined") {
+      setTimeout(() => {
+        if (footerElement.isConnected) renderQRCodeVerifikasiInto(footerElement);
+      }, 250);
+      return;
+    }
+
+    try {
+      const tmpQr = document.createElement('div');
+      tmpQr.style.position = 'fixed';
+      tmpQr.style.left = '-9999px';
+      tmpQr.style.top = '-9999px';
+      document.body.appendChild(tmpQr);
+
+      new QRCode(tmpQr, { text: qrText, width: 96, height: 96, correctLevel: QRCode.CorrectLevel.M });
+      const canvas = tmpQr.querySelector('canvas');
+      const img = tmpQr.querySelector('img');
+      const src = canvas ? canvas.toDataURL('image/png') : (img ? img.src : "");
+      tmpQr.remove();
+
+      if (src) {
+        qrPreviewCache = { text: qrText, src };
+        paintQrImage(src);
+      }
+    } catch (err) {
+      qrContainer.innerHTML = '<span style="font-size:8pt;font-weight:700;color:#0f172a;">QR</span>';
+    }
+  }
+}
+
+function formatTanggalIndo(dateString) {
+  if (!dateString) return "..................";
+  
+  let parts;
+  if (dateString.includes("-")) {
+    parts = dateString.split('-'); // YYYY-MM-DD
+  } else if (dateString.includes("/")) {
+    parts = dateString.split('/').reverse(); // DD/MM/YYYY -> [YYYY, MM, DD]
+  } else {
+    return dateString;
+  }
+
+  if(parts.length !== 3) return dateString;
+
+  const tahun = parseInt(parts[0], 10);
+  const bulan = parseInt(parts[1], 10) - 1;
+  const tanggal = parseInt(parts[2], 10);
+  
+  const bulanIndo = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
+  return `${tanggal} ${bulanIndo[bulan]} ${tahun}`;
+}
+
+// =============================================================
+// MANAGEMENT TANDA TANGAN (SPESIMEN)
+// =============================================================
+function renderKomponenSpesimenTtd(targetEl) {
+  const c = targetEl || document.getElementById('canvas-area-ttd');
+  if(!c) return;
+  
+  const layoutType = document.getElementById('in_layout_type')?.value || "standard";
+  const tglIndo = formatTanggalIndo(document.getElementById('in_tanggal')?.value);
+  const lokasi = document.getElementById('in_lokasi')?.value || "Jember";
+  const isCentered = layoutType === "centered";
+  const ttdHeight = document.getElementById('in_ttd_height')?.value || "80";
+  const pakaiMaterai = document.getElementById('in_ttd_materai')?.checked || false;
+  const frasaDitetapkan = document.getElementById('in_ttd_frasa_ditetapkan') ? document.getElementById('in_ttd_frasa_ditetapkan').value : "Ditetapkan di";
+  const frasaTanggal = document.getElementById('in_ttd_frasa_tanggal') ? document.getElementById('in_ttd_frasa_tanggal').value : "Pada Tanggal";
+  const pakaiFoto = document.getElementById('in_ttd_foto')?.checked || false;
+
+  const getP = (n) => { 
+    const fVal = document.getElementById(`p${n}_frasa`)?.value || "";
+    const jVal = document.getElementById(`p${n}_jabatan`)?.value || "";
+    const nVal = document.getElementById(`p${n}_nama`)?.value || "..................";
+    const pVal = document.getElementById(`p${n}_pangkat`)?.value || "";
+    const nipVal = document.getElementById(`p${n}_nip`)?.value;
+    return {
+      f: fVal,
+      j: jVal,
+      n: nVal,
+      p: pVal,
+      nip: nipVal ? "NIP. " + nipVal : "NIP. ...................."
+    };
+  };
+  
+  const p1 = getP(1), p2 = getP(2), p3 = getP(3);
+
+  // Komponen Materai
+  const materaiHtml = pakaiMaterai ? `
+    <div class="absolute left-0 top-1/2 -translate-y-1/2 -rotate-12 border-2 border-dashed border-slate-300 p-2 text-[7pt] text-slate-400 font-bold leading-none select-none text-center z-10 bg-white/50">
+      TEMPEL<br>MATERAI<br>10.000
+    </div>
+  ` : "";
+
+  // Komponen Bingkai Foto 3x4
+  const fotoHtml = pakaiFoto ? `
+    <div class="shrink-0 border border-black flex items-center justify-center text-[7pt] text-slate-400 font-bold mb-6" style="width: 30mm; height: 40mm; margin-right: 15px;">
+      PAS FOTO 3X4
+    </div>
+  ` : "";
+
+  // Tentukan alignment berdasarkan layout
+  const alignClass = isCentered ? 'text-left' : 'text-center';
+
+  // Blok "Ditetapkan di" khusus untuk layout SK/SKL
+  let prefixDitetapkan = "";
+  if (isCentered) {
+    if (frasaDitetapkan.trim() === "" && frasaTanggal.trim() === "") {
+      // JIKA KOSONG: Tampilkan format baris tunggal
+      prefixDitetapkan = `<div class="text-left mb-3">${escapeHTML(lokasi)}, ${escapeHTML(tglIndo)}</div>`;
+    } else {
+      // JIKA BERISI: Tampilkan format tabel resmi
+      prefixDitetapkan = `
+        <div class="text-left mb-3">
+          <table style="border-collapse: collapse; border: none; width: auto !important; margin-left: 0; line-height: 1.2; font-size: 12pt;">
+            <tr>
+              <td style="padding: 0; white-space: nowrap; width: 1px;">${escapeHTML(frasaDitetapkan)}</td>
+              <td style="padding: 0 4px; width: 1px; text-align: center;">:</td>
+              <td style="padding: 0; white-space: nowrap;">${escapeHTML(lokasi)}</td>
+            </tr>
+            <tr>
+              <td style="padding: 0; white-space: nowrap; width: 1px;">${escapeHTML(frasaTanggal)}</td>
+              <td style="padding: 0 4px; width: 1px; text-align: center;">:</td>
+              <td style="padding: 0; white-space: nowrap;">${escapeHTML(tglIndo)}</td>
+            </tr>
+          </table>
+        </div>`;
+    }
+  }
+
+  if (modeTtdAktif === "kanan-bawah") {
+    c.innerHTML = `
+      <div class="flex justify-end w-full">
+        <div class="flex items-end">
+          ${fotoHtml}
+          <div class="w-[300px] ${alignClass}">
+            ${prefixDitetapkan}
+            <div class="whitespace-pre-line ${isCentered ? 'mt-2' : ''}">${p1.j}</div>
+            <div class="relative inline-block w-full">
+              ${materaiHtml}
+              <div style="height: ${ttdHeight}px"></div>
+            </div>
+            <div class="font-bold underline">${p1.n}</div>
+            <div>${p1.p}</div>
+            <div>${p1.nip}</div>
+          </div>
+        </div>
+      </div>`;
+  } else if (modeTtdAktif === "kanan-kiri") {
+    c.innerHTML = `
+      <div class="flex justify-between w-full items-end">
+        <div class="w-[280px] text-center pl-24">${p2.f ? `<div class="font-medium mb-1">${p2.f}</div>`:''}<div class="whitespace-pre-line">${p2.j}</div><div class="h-20"></div><div class="font-bold underline">${p2.n}</div><div>${p2.p}</div><div>${p2.nip}</div></div>
+        <div class="w-[280px] ${alignClass}">${prefixDitetapkan}<div class="whitespace-pre-line">${p1.j}</div><div class="h-20"></div><div class="font-bold underline">${p1.n}</div><div>${p1.p}</div><div>${p1.nip}</div></div>
+      </div>`;
+  } else if (modeTtdAktif === "segitiga") {
+    c.innerHTML = `<div class="w-full flex flex-col items-center gap-8"><div class="w-full flex justify-between items-end"><div class="w-[260px] text-center">${p2.f ? `<div class="font-medium mb-1">${p2.f}</div>`:''}<div class="whitespace-pre-line">${p2.j}</div><div class="h-20"></div><div class="font-bold underline">${p2.n}</div><div>${p2.p}</div><div>${p2.nip}</div></div><div class="w-[260px] ${alignClass}">${prefixDitetapkan}<div class="whitespace-pre-line">${p1.j}</div><div class="h-20"></div><div class="font-bold underline">${p1.n}</div><div>${p1.p}</div><div>${p1.nip}</div></div></div><div class="w-[300px] text-center mt-2">${p3.f ? `<div class="font-medium mb-1">${p3.f}</div>`:'<div class="font-medium mb-1">Mengetahui,</div>'}<div class="whitespace-pre-line">${p3.j}</div><div class="h-16"></div><div class="font-bold underline">${p3.n}</div><div>${p3.p}</div><div>${p3.nip}</div></div></div>`;
+  }
+}
+
+function ubahModeLayoutTtd(mode) {
+  modeTtdAktif = mode;
+  ['p2','p3'].forEach(id => {
+    const el = document.getElementById(`box-form-${id}`);
+    if(el) el.classList.add('hidden');
+  });
+  if(mode === "kanan-kiri") document.getElementById('box-form-p2')?.classList.remove('hidden');
+  if(mode === "segitiga") { 
+    document.getElementById('box-form-p2')?.classList.remove('hidden'); 
+    document.getElementById('box-form-p3')?.classList.remove('hidden'); 
+  }
+  updateLivePreview();
+}
+
+// =============================================================
+// PROSES UNGGHAH LOGO & SIMPAN CONFIG KE DB
+// =============================================================
+let cropperInstance = null;
+let currentCropPosition = '';
+
+function prosesUnggahLogoKeDrive(posisi) {
+  const fileInput = document.getElementById(posisi === 'left' ? 'file_logo_kiri' : 'file_logo_kanan');
+  const file = fileInput?.files[0];
+  if (!file) return;
+
+  currentCropPosition = posisi;
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    const imgElement = document.getElementById('image-to-crop');
+    imgElement.src = e.target.result;
+    
+    document.getElementById('modal-cropper').classList.remove('hidden');
+    
+    if (cropperInstance) cropperInstance.destroy();
+    
+    // Pastikan library CropperJS sudah dimuat dalam global scope
+    const CropperLib = window.Cropper || Cropper;
+    if (typeof CropperLib === 'undefined') {
+      tampilkanToast("error", "GAGAL MEMUAT", "Library pemotong gambar belum siap. Silakan muat ulang halaman (F5).");
+      return;
+    }
+
+    cropperInstance = new CropperLib(imgElement, {
+      aspectRatio: NaN, // User bebas menentukan lebar/tinggi
+      viewMode: 1,
+      autoCropArea: 0.8,
+      restore: false,
+      guides: true,
+      center: true,
+      highlight: false,
+      cropBoxMovable: true,
+      cropBoxResizable: true
+    });
+
+    document.getElementById('btn-do-crop').onclick = function() {
+      const canvas = cropperInstance.getCroppedCanvas({
+        width: 500, // Ukuran ideal agar logo tajam tapi file ringan
+        height: 600,
+        imageSmoothingEnabled: true,
+        imageSmoothingQuality: 'high',
+      });
+      
+      // Paksa ke image/png untuk stabilitas encoding dan dukungan transparansi penuh
+      const croppedBase64 = canvas.toDataURL('image/png');
+      const base64Data = croppedBase64.split(',')[1];
+      
+      tutupModalCropper();
+      lakukanUploadLogoFinal('image/png', base64Data, currentCropPosition);
+    };
+  };
+  reader.readAsDataURL(file);
+}
+
+function tutupModalCropper() {
+  document.getElementById('modal-cropper').classList.add('hidden');
+  if (cropperInstance) {
+    cropperInstance.destroy();
+    cropperInstance = null;
+  }
+  // Reset file input
+  document.getElementById('file_logo_kiri').value = "";
+  document.getElementById('file_logo_kanan').value = "";
+}
+
+function lakukanUploadLogoFinal(mimeType, base64Data, posisi) {
+  setLoading(true, "Mengunggah logo " + posisi + "...");
+  google.script.run.withSuccessHandler(function(response) {
+    if (response && response.status === "SUCCESS") {
+      document.getElementById(posisi === 'left' ? 'in_logo_kiri' : 'in_logo_kanan').value = response.url;
+      if (posisi === 'right' && document.getElementById('brand-logo-nav')) {
+        document.getElementById('brand-logo-nav').src = response.url;
+      }
+      updateLivePreview();
+      let dataOtoSimpan = {}; 
+      dataOtoSimpan[posisi === 'left' ? "Logo_Kiri_Url" : "Logo_Kanan_Url"] = response.url;
+      google.script.run.withSuccessHandler(()=> {
+        setLoading(false); tampilkanToast("success", "BERHASIL", `Logo ${posisi} diunggah.`);
+      }).simpanPengaturanKop(dataOtoSimpan);
+    } else { 
+      setLoading(false); 
+      tampilkanToast("error", "GAGAL", response ? response.message : "Gagal mengunggah gambar."); 
+    }
+  }).withFailureHandler(function(err){
+    setLoading(false);
+    tampilkanToast("error", "CRITICAL ERROR", err.toString());
+  }).uploadFileLogoKeDrive(mimeType, base64Data, posisi.toUpperCase());
+}
+
+// =============================================================
+// OPERASI DATABASE (CRUD LOG SURAT & TEMPLATE)
+// =============================================================
+function simpanKopKeDatabase() {
+  setLoading(true, "Simpan Kop diproses..."); // Aktifkan animasi loader jika ada
+  
+  // Mengambil seluruh data geometri dan identitas kop
+  // Mengambil seluruh data geometri dan identitas kop secara lengkap
+  const dataKop = {
+    "App_Name": document.getElementById('in_app_name').value,
+    "Kop_Daerah": document.getElementById('in_kop_daerah').value,
+    "Kop_Sub_Dinas": document.getElementById('in_kop_sub').value,
+    "Kop_Sekolah": document.getElementById('in_kop_sekolah').value,
+    "Kop_Alamat": document.getElementById('in_kop_alamat').value,
+    "Kop_Kontak": document.getElementById('in_kop_kontak').value,
+    "Line_Spacing": document.getElementById('in_line_spacing').value,
+    "Ukuran_Kertas": document.getElementById('in_ukuran_kertas').value,
+    "Ukuran_Font": document.getElementById('in_ukuran_font').value,
+    "Pilihan_Font": document.getElementById('in_pilihan_font').value,
+    "Satuan_Margin": document.getElementById('in_satuan_margin').value,
+    "Margin_Atas": document.getElementById('in_margin_atas').value,
+    "Margin_Bawah": document.getElementById('in_margin_bawah').value,
+    "Margin_Kiri": document.getElementById('in_margin_kiri').value,
+    "Margin_Kanan": document.getElementById('in_margin_kanan').value
+  };
+
+  google.script.run
+    .withSuccessHandler(function(res) {
+      setLoading(false);
+      if (res.status === "SUCCESS") {
+        tampilkanToast("success", "BERHASIL", res.message);
+      } else {
+        tampilkanToast("error", "GAGAL", res.message);
+      }
+    })
+    .withFailureHandler(function(err) {
+      setLoading(false);
+      tampilkanToast("error", "ERROR", err.toString());
+    })
+    .simpanPengaturanKop(dataKop); // Memanggil fungsi baru di backend
+}
+
+function bukaModalSettings() {
+  document.getElementById('modal-settings').classList.remove('hidden');
+  if (typeof loadKodeKlasifikasiSurat === "function") loadKodeKlasifikasiSurat();
+}
+
+function tutupModalSettings() {
+  document.getElementById('modal-settings').classList.add('hidden');
+}
+
+function bukaModalProfile() {
+  document.getElementById('prof_nama').value = userSessionName;
+  document.getElementById('prof_username').value = userSessionUsername;
+  document.getElementById('prof_password').value = "";
+  document.getElementById('modal-profile').classList.remove('hidden');
+}
+
+function tutupModalProfile() {
+  document.getElementById('modal-profile').classList.add('hidden');
+}
+
+function simpanProfilBaru() {
+  const dataProfil = {
+    nama: document.getElementById('prof_nama').value.trim(),
+    username: document.getElementById('prof_username').value.trim(),
+    password: document.getElementById('prof_password').value.trim()
+  };
+
+  if(!dataProfil.nama || !dataProfil.username) {
+    tampilkanToast("error", "DATA KOSONG", "Nama dan Username harus diisi.");
+    return;
+  }
+
+  setLoading(true, "Memperbarui Akun...");
+  google.script.run.withSuccessHandler(function(res) {
+    setLoading(false);
+    if(res.status === "SUCCESS") {
+      // Cek apakah ada perubahan pada Username atau Password
+      const isCredentialChanged = dataProfil.username !== userSessionUsername || dataProfil.password !== "";
+      
+      if (isCredentialChanged) {
+        Swal.fire({
+          icon: 'success',
+          title: 'Keamanan Diperbarui',
+          text: 'Karena Anda mengubah Username atau Password, sistem akan mengeluarkan Anda secara otomatis. Silakan login kembali dengan identitas baru.',
+          confirmButtonColor: '#0284c7',
+          allowOutsideClick: false
+        }).then(() => {
+          prosesLogoutSistem();
+        });
+      } else {
+        tampilkanToast("success", "PROFIL DIPERBARUI", res.message);
+        userSessionName = dataProfil.nama;
+        let sesi = JSON.parse(localStorage.getItem("kliksurat_sd_session"));
+        if (sesi) {
+          sesi.nama = userSessionName;
+          sesi.username = userSessionUsername; // Jaga agar tetap sinkron
+          localStorage.setItem("kliksurat_sd_session", JSON.stringify(sesi));
+        }
+        document.getElementById('user-profile').innerHTML = `<i class="fa fa-user-circle"></i> ${userSessionName}`;
+        tutupModalProfile();
+      }
+    } else {
+      tampilkanToast("error", "GAGAL", res.message);
+    }
+  }).perbaruiProfilUser(userSessionUsername, dataProfil);
+}
+
+function simpanSettingsUmum() {
+  const appName = document.getElementById('in_app_name').value;
+  const npsnSekolah = (document.getElementById('in_npsn_sekolah')?.value || "").replace(/\D/g, "");
+  const logoL = document.getElementById('in_logo_kiri').value;
+  const logoR = document.getElementById('in_logo_kanan').value;
+
+  if (npsnSekolah && npsnSekolah.length !== 8) {
+    tampilkanToast("error", "NPSN TIDAK VALID", "NPSN sekolah harus berisi 8 digit angka.");
+    return;
+  }
+
+  setLoading(true, "Memperbarui sistem...");
+  google.script.run.withSuccessHandler(function(res) {
+    setLoading(false);
+    if(res.status === "SUCCESS") {
+      tampilkanToast("success", "SISTEM DIPERBARUI", "Nama aplikasi dan logo telah disimpan.");
+      tutupModalSettings();
+      // Sinkronkan seluruh UI dengan nama baru
+      refreshUIIdentity(appName, logoR || logoL || "");
+    } else {
+      tampilkanToast("error", "GAGAL", res.message);
+    }
+  }).simpanPengaturanKop({
+    "App_Name": appName,
+    "NPSN_Sekolah": npsnSekolah,
+    "Logo_Kiri_Url": logoL,
+    "Logo_Kanan_Url": logoR
+  });
+}
+
+function loadKodeKlasifikasiSurat() {
+  const select = document.getElementById('in_kode_klasifikasi');
+  const listBox = document.getElementById('daftar-kode-klasifikasi');
+  if (!select && !listBox) return;
+
+  google.script.run
+    .withSuccessHandler(function(data) {
+      window.cacheKodeKlasifikasi = data || [];
+      renderKodeKlasifikasiSurat(window.cacheKodeKlasifikasi);
+    })
+    .withFailureHandler(function(err) {
+      console.warn("Gagal memuat kode klasifikasi:", err);
+    })
+    .ambilKodeKlasifikasiSurat();
+}
+
+function renderKodeKlasifikasiSurat(data) {
+  const select = document.getElementById('in_kode_klasifikasi');
+  const listBox = document.getElementById('daftar-kode-klasifikasi');
+  const escapeText = (value) => String(value ?? "").replace(/[&<>"']/g, (char) => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#39;'
+  }[char]));
+  const items = (data && data.length) ? data : [
+    { kode: "400.3.5", nama: "Administrasi Sekolah" },
+    { kode: "005", nama: "Undangan" }
+  ];
+
+  if (select) {
+    const currentValue = select.value;
+    select.innerHTML = items.map(item => {
+      const label = item.nama ? `${item.kode} - ${item.nama}` : item.kode;
+      return `<option value="${escapeText(item.kode)}">${escapeText(label)}</option>`;
+    }).join('');
+    if (items.some(item => item.kode === currentValue)) select.value = currentValue;
+  }
+
+  if (listBox) {
+    listBox.innerHTML = items.map(item => `
+      <div class="flex items-center justify-between gap-2 rounded-lg border border-slate-100 dark:border-slate-700 bg-white/70 dark:bg-slate-800/70 px-2.5 py-1.5">
+        <div class="flex flex-col">
+          <span class="font-mono font-bold text-brand-blue text-xs">${escapeText(item.kode)}</span>
+          <span class="text-[10px] text-slate-500 dark:text-slate-300 truncate max-w-[150px]">${escapeText(item.nama || '-')}</span>
+        </div>
+        <button onclick="hapusKlasifikasi('${escapeText(item.kode)}')" class="text-rose-400 hover:text-rose-600 transition-colors">
+          <i class="fa fa-times-circle"></i>
+        </button>
+      </div>
+    `).join('');
+  }
+}
+
+function hapusKlasifikasi(kode) {
+  Swal.fire({
+    title: 'Hapus Kode?',
+    text: `Hapus klasifikasi ${kode}?`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonText: 'Ya, Hapus'
+  }).then(res => {
+    if (res.isConfirmed) {
+      setLoading(true, "Menghapus...");
+      google.script.run.withSuccessHandler(() => { loadKodeKlasifikasiSurat(); setLoading(false); }).hapusKodeKlasifikasi(kode);
+    }
+  });
+}
+
+function tambahKodeKlasifikasiBaru() {
+  const kodeEl = document.getElementById('in_kode_baru');
+  const namaEl = document.getElementById('in_nama_kode_baru');
+  const kode = kodeEl?.value.trim() || "";
+  const nama = namaEl?.value.trim() || "";
+
+  if (!kode || !nama) {
+    tampilkanToast("error", "DATA KOSONG", "Kode dan nama klasifikasi wajib diisi.");
+    return;
+  }
+
+  setLoading(true, "Menyimpan kode klasifikasi...");
+  google.script.run
+    .withSuccessHandler(function(res) {
+      setLoading(false);
+      if (res && res.status === "SUCCESS") {
+        if (kodeEl) kodeEl.value = "";
+        if (namaEl) namaEl.value = "";
+        tampilkanToast("success", "KODE TERSIMPAN", res.message);
+        loadKodeKlasifikasiSurat();
+      } else {
+        tampilkanToast("error", "GAGAL", res ? res.message : "Kode klasifikasi gagal disimpan.");
+      }
+    })
+    .withFailureHandler(function(err) {
+      setLoading(false);
+      tampilkanToast("error", "ERROR", err.toString());
+    })
+    .tambahKodeKlasifikasiSurat({ kode, nama });
+}
+
+function simpanTtdKeDatabase() {
+  // Ambil elemen mode ttd (pastikan ID elemen select/input mode TTD Anda sudah pas)
+  const modeElem = document.getElementById('in_mode_ttd');
+  const modeValue = modeElem ? modeElem.value : (typeof modeTtdAktif !== 'undefined' ? modeTtdAktif : "kanan-bawah");
+
+  setLoading(true, "Menyimpan setelan TTD...");
+  
+  // Mengemas data 3 pejabat penandatangan (ID disesuaikan dengan HTML Anda)
+  const dataTtd = {
+    "Ttd_Frasa_Ditetapkan": document.getElementById('in_ttd_frasa_ditetapkan')?.value || "Ditetapkan di",
+    "Ttd_Frasa_Tanggal": document.getElementById('in_ttd_frasa_tanggal')?.value || "Pada Tanggal",
+    "Ttd_Mode_Aktif": modeValue,
+    "Ttd_Gunakan_Foto": document.getElementById('in_ttd_foto')?.checked ? "YA" : "TIDAK",
+    
+    // Data Pejabat 1 (Biasanya Pejabat Utama / Kanan)
+    "Ttd_Jabatan_1": document.getElementById('p1_jabatan')?.value || "",
+    "Ttd_Nama_1": document.getElementById('p1_nama')?.value || "",
+    "Ttd_Pangkat_1": document.getElementById('p1_pangkat')?.value || "",
+    "Ttd_Nip_1": document.getElementById('p1_nip')?.value || "",
+    
+    // Data Pejabat 2 (Pejabat Kiri)
+    "Ttd_Frasa_2": document.getElementById('p2_frasa')?.value || "",
+    "Ttd_Jabatan_2": document.getElementById('p2_jabatan')?.value || "",
+    "Ttd_Nama_2": document.getElementById('p2_nama')?.value || "",
+    "Ttd_Pangkat_2": document.getElementById('p2_pangkat')?.value || "",
+    "Ttd_Nip_2": document.getElementById('p2_nip')?.value || "",
+    
+    // Data Pejabat 3 (Atasan Pengesah)
+    "Ttd_Frasa_3": document.getElementById('p3_frasa')?.value || "",
+    "Ttd_Jabatan_3": document.getElementById('p3_jabatan')?.value || "",
+    "Ttd_Nama_3": document.getElementById('p3_nama')?.value || "",
+    "Ttd_Pangkat_3": document.getElementById('p3_pangkat')?.value || "",
+    "Ttd_Nip_3": document.getElementById('p3_nip')?.value || ""
+  };
+
+  // Tembak langsung ke fungsi backend simpanPengaturanTtd di Kode.gs
+  google.script.run
+    .withSuccessHandler(function(res) {
+      setLoading(false);
+      if (res && res.status === "SUCCESS") {
+        // Sinkronkan data ke cache global agar placeholder terupdate permanen
+        window.configPejabat = {
+          nama: document.getElementById('p1_nama')?.value || "",
+          nip: document.getElementById('p1_nip')?.value || "",
+          jabatan: document.getElementById('p1_jabatan')?.value || "",
+          pangkat: document.getElementById('p1_pangkat')?.value || ""
+        };
+        if (typeof tampilkanToast === "function") {
+          tampilkanToast("success", "BERHASIL", res.message);
+        } else {
+          Swal.fire('Berhasil', res.message, 'success');
+        }
+      } else {
+        const msg = res ? res.message : "Gagal menyimpan data TTD.";
+        if (typeof tampilkanToast === "function") {
+          tampilkanToast("error", "GAGAL", msg);
+        } else {
+          Swal.fire('Gagal', msg, 'error');
+        }
+      }
+    })
+    .withFailureHandler(function(err) {
+      setLoading(false);
+      if (typeof tampilkanToast === "function") {
+        tampilkanToast("error", "ERROR", err.toString());
+      } else {
+        Swal.fire('Error Sistem', err.toString(), 'error');
+      }
+    })
+    .simpanPengaturanTtd(dataTtd);
+}
+
+// =============================================================
+// FUNGSI UTAMA: MURNI SIMPAN ARSIP & TAWARKAN TEMPLATE
+// =============================================================
+function prosesSimpanData() {
+  const packNomor = document.getElementById('in_nomor')?.value;
+  const packPerihal = document.getElementById('in_perihal')?.value;
+
+  // 1. Validasi Input Utama Surat
+  if(!packNomor || !packPerihal) {
+    Swal.fire({ 
+      icon: 'warning', 
+      title: 'Data Belum Lengkap', 
+      text: 'Nomor dan Perihal wajib diisi!', 
+      confirmButtonColor: '#0284c7' 
+    });
+    return;
+  }
+
+  // Paksa pembuatan Serial ID baru setiap kali tombol "Simpan Data" ditekan.
+  // Ini memastikan setiap entri log baru di database memiliki identitas unik (Audit Trail).
+  const inSid = document.getElementById('in_serial_id');
+  if (inSid) {
+    inSid.value = "V" + Math.random().toString(36).substring(2, 9).toUpperCase();
+    shortUrlCache = ""; 
+    lastSidForShortening = "";
+    updateLivePreview(); 
+  }
+
+  // 2. Hanya Ambil Data Teks Surat (Kop dan TTD tidak ikut dikemas)
+  const dataSuratMurni = {
+    nomor: packNomor,
+    tanggal: document.getElementById('in_tanggal')?.value || "",
+    perihal: packPerihal,
+    penerima: document.getElementById('in_penerima')?.value || "",
+    lampiran: document.getElementById('in_lampiran')?.value || "",
+    pembuka: document.getElementById('in_pembuka')?.value || "",
+    isi: document.getElementById('in_isi')?.value || "",
+    tembusan: document.getElementById('in_tembusan')?.value || "",
+    operator: typeof userSessionName !== "undefined" ? userSessionName : "Admin",
+    serial_id: document.getElementById('in_serial_id')?.value || "-",
+    ref_id: window.selectedSiswa?.NISN || window.selectedGuru?.NIP || ""
+  };
+
+  // 3. Validasi Duplikat di Server sebelum Konfirmasi
+  const urutan = dataSuratMurni.nomor.split('/')[1];
+  const tahun = dataSuratMurni.nomor.split('/').pop();
+
+  google.script.run.withSuccessHandler(function(status) {
+    if (status === "DUPLICATE" || status === "JUMP") {
+      const msg = status === "DUPLICATE" 
+        ? `Nomor ${urutan} sudah ada. Menyesuaikan urutan...` 
+        : `Nomor ${urutan} melompati antrean. Menyesuaikan urutan...`;
+      tampilkanToast("warning", "NOMOR DISESUAIKAN", msg);
+      mintaNomorOtomatis();
+      return;
+    }
+
+    // 4. Konfirmasi Simpan Arsip
+    Swal.fire({
+      title: 'Simpan Arsip Surat?',
+      text: "Surat akan dicatat ke dalam log arsip database.",
+      icon: 'question',
+      showCancelButton: true,
+      confirmButtonColor: '#10b981', 
+      cancelButtonColor: '#64748b',
+      confirmButtonText: 'Ya, Arsipkan',
+      cancelButtonText: 'Batal'
+    }).then((result) => {
+      if (result.isConfirmed) {
+        setLoading(true, "Mengarsipkan Surat...");
+      
+        google.script.run
+        .withSuccessHandler(function(res) {
+          setLoading(false);
+          if (typeof muatDataArsip === "function") muatDataArsip(); 
+          
+          // Reset nomor otomatis untuk surat berikutnya
+          mintaNomorOtomatis();
+        
+        // 5. Sukses Arsip, Tawarkan untuk Simpan Teks Ini Jadi Template
+        Swal.fire({
+          icon: 'success',
+          title: 'Berhasil Diarsipkan!',
+          text: 'Surat resmi masuk log arsip. Apakah isi teks surat ini ingin dijadikan Master Template baru?',
+          showCancelButton: true,
+          confirmButtonColor: '#0284c7',
+          cancelButtonColor: '#64748b',
+          confirmButtonText: '<i class="fa fa-save"></i> Jadikan Template',
+          cancelButtonText: 'Tidak, Selesai'
+        }).then((pilihan) => {
+          if (pilihan.isConfirmed) {
+            // Oper data surat murni ke fungsi pembuat nama template
+            tanyakanNamaTemplateOtomatis(dataSuratMurni);
+          } else {
+            if (typeof bersihkanFormSuratSelesai === "function") bersihkanFormSuratSelesai();
+          }
+        });
+      })
+      .withFailureHandler(function(err) {
+        setLoading(false);
+        Swal.fire('Proses Gagal', err.toString(), 'error');
+      })
+      .simpanPaketSuratLengkap(dataSuratMurni); // Murni kirim teks surat saja
+    }
+    });
+  }).cekNomorDuplikat(urutan, tahun);
+}
+
+// =============================================================
+// FUNGSI LANJUTAN: INPUT NAMA TEMPLATE & KIRIM KE BACKEND
+// =============================================================
+function tanyakanNamaTemplateOtomatis(dataSuratMurni) {
+  Swal.fire({
+    title: 'Nama Master Template',
+    text: 'Masukkan nama pengenal untuk template draf ini:',
+    input: 'text',
+    inputPlaceholder: 'Contoh: Surat Undangan Wali Murid',
+    showCancelButton: true,
+    confirmButtonColor: '#0284c7', // Biru langit tetap konsisten
+    cancelButtonColor: '#64748b',
+    confirmButtonText: 'Simpan Template',
+    cancelButtonText: 'Batal',
+    inputValidator: (value) => {
+      if (!value) return 'Nama template tidak boleh kosong!';
+    }
+  }).then((inputRes) => {
+    if (inputRes.isConfirmed) {
+      
+      // Jendela input Swal akan otomatis menutup, lalu loader kustom kita langsung mengunci layar dengan halus
+      setLoading(true, "Mendaftarkan Template Baru...");
+      
+      const paketTemplate = {
+        nama: inputRes.value,
+        surat: dataSuratMurni
+      };
+
+      google.script.run
+      .withSuccessHandler(function(res) {
+        setLoading(false); // Layar kunci memudar hilang...
+        
+        // Jendela sukses Swal muncul tanpa ada gangguan crash pop-up!
+        Swal.fire({
+          icon: 'success',
+          title: 'Template Tersimpan!',
+          text: 'Master draf surat berhasil ditambahkan ke template.',
+          confirmButtonColor: '#0284c7'
+        }).then(() => {
+          if (typeof loadKoleksiDatabase === "function") loadKoleksiDatabase();
+          if (typeof bersihkanFormSuratSelesai === "function") bersihkanFormSuratSelesai();
+        });
+      })
+      .withFailureHandler(function(err) {
+        setLoading(false);
+        Swal.fire({ icon: 'error', title: 'Gagal', text: err.toString(), confirmButtonColor: '#e11d48' });
+      })
+      .simpanTemplateDinamis(paketTemplate);
+    }
+  });
+}
+
+function bersihkanFormSuratSelesai() {
+  // Karena tidak ada elemen <form id="form_surat">, kita bersihkan manual input yang sering digunakan
+  const idsToClear = ['in_nomor', 'in_perihal', 'in_penerima', 'in_pembuka', 'in_tembusan'];
+  idsToClear.forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.value = "";
+  });
+  setIsiEditorValue('');
+  
+  // Reset Serial ID agar surat berikutnya punya ID baru
+  const inSid = document.getElementById('in_serial_id');
+  if(inSid) inSid.value = "";
+  
+  const inputTgl = document.getElementById('in_tanggal');
+  if (inputTgl) {
+    const now = new Date();
+    inputTgl.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+  
+  shortUrlCache = "";
+  lastSidForShortening = "";
+  updateLivePreview();
+}
+
+function buatTemplateBaru() {
+  const dataSurat = {
+    nomor: document.getElementById('in_nomor').value,
+    tanggal: document.getElementById('in_tanggal') ? document.getElementById('in_tanggal').value : "", 
+    perihal: document.getElementById('in_perihal').value,
+    penerima: document.getElementById('in_penerima').value,
+    lampiran: document.getElementById('in_lampiran').value,
+    pembuka: document.getElementById('in_pembuka').value,
+    isi: document.getElementById('in_isi').value
+  };
+  
+  Swal.fire({
+    title: 'Beri Nama Template', 
+    input: 'text',
+    inputPlaceholder: 'Contoh: Undangan Wali Murid',
+    showCancelButton: true,
+    confirmButtonColor: '#0284c7',
+    inputValidator: (value) => { if (!value) return 'Nama template tidak boleh kosong!' }
+  }).then((result) => {
+    if (result.isConfirmed && result.value) {
+      setLoading(true, "Memproses Template...");
+      dataSurat.nama = result.value;
+
+      google.script.run
+      .withSuccessHandler(function() {
+        setLoading(false);
+        Swal.fire({ icon: 'success', title: 'Sukses!', text: 'Template baru berhasil ditambahkan.', confirmButtonColor: '#10b981' });
+        loadKoleksiDatabase(); 
+      })
+      .withFailureHandler(function(err) {
+        setLoading(false);
+        Swal.fire({ icon: 'error', title: 'Gagal!', text: 'Gagal simpan template: ' + err, confirmButtonColor: '#e11d48' });
+      })
+      .simpanTemplateDinamis(dataSurat);
+    }
+  });
+}
+
+function konfirmasiHapusSemuaTemplate() {
+  // Tidak ada lagi logika dua langkah, langsung munculkan SweetAlert
+  
+
+  Swal.fire({
+    title: 'Hapus Semua Template?',
+    text: "Seluruh daftar master template akan dihapus secara permanen. Pastikan Anda sudah mengekspor backup jika diperlukan.",
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#e11d48',
+    cancelButtonColor: '#64748b',
+    confirmButtonText: 'Ya, Hapus Semua',
+    cancelButtonText: 'Batal'
+  }).then((result) => {
+    if (result.isConfirmed) {
+      setLoading(true, "Membersihkan database...");
+      google.script.run.withSuccessHandler(function(res) {
+        setLoading(false);
+        if(res.status === "SUCCESS") {
+          tampilkanToast("success", "BERHASIL", res.message);
+          loadKoleksiDatabase();
+        } else {
+          tampilkanToast("error", "GAGAL", res.message);
+        }
+      }).hapusSemuaTemplate();
+    }
+  });
+}
+
+/**
+ * Fitur: Autosave Draft ke LocalStorage
+ */
+function jalankanAutosave() {
+  const draft = getCurrentDraftArchivePayload();
+  localStorage.setItem('kliksurat_draft_autosave', JSON.stringify(draft));
+}
+
+function muatDraftAutosave() {
+  const saved = localStorage.getItem('kliksurat_draft_autosave');
+  if (!saved) return;
+  
+  try {
+    const d = JSON.parse(saved);
+    if (d.nomor || d.perihal || d.isi) {
+      document.getElementById('in_nomor').value = d.nomor || "";
+      document.getElementById('in_perihal').value = d.perihal || "";
+      document.getElementById('in_penerima').value = d.penerima || "";
+      document.getElementById('in_lampiran').value = d.lampiran || "-";
+      document.getElementById('in_pembuka').value = d.pembuka || "";
+      document.getElementById('in_tembusan').value = d.tembusan || "";
+      document.getElementById('in_tanggal').value = d.tanggal || "";
+      document.getElementById('in_serial_id').value = d.serial_id || "";
+      if (document.getElementById('in_layout_type')) document.getElementById('in_layout_type').value = d.layout || "standard";
+      setIsiEditorValue(d.isi || "");
+      updateLivePreview();
+      tampilkanToast("info", "DRAF DIPULIHKAN", "Melanjutkan sesi pengetikan terakhir Anda.");
+    }
+  } catch (e) { console.warn("Gagal memuat draf autosave."); }
+}
+
+/**
+ * Fitur: Ekspor seluruh template yang ada di cache ke file JSON
+ */
+function eksporTemplates() {
+  if (!window.cacheTemplates || window.cacheTemplates.length === 0) {
+    tampilkanToast("warning", "EKSPOR GAGAL", "Tidak ada template untuk diekspor.");
+    return;
+  }
+  
+  // Menggunakan Blob untuk ekspor JSON murni agar mendukung karakter khusus secara aman
+  const blob = new Blob([JSON.stringify(window.cacheTemplates, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  
+  const tgl = new Date().toISOString().split('T')[0];
+  const exportFileDefaultName = `Backup_Template_Surat_${tgl}.json`;
+  
+  const linkElement = document.createElement('a');
+  linkElement.setAttribute('href', url);
+  linkElement.setAttribute('download', exportFileDefaultName);
+  linkElement.click();
+  URL.revokeObjectURL(url);
+  tampilkanToast("success", "EKSPOR SELESAI", "File template berhasil diunduh.");
+}
+
+/**
+ * Fitur: Memicu dialog file untuk impor
+ */
+function triggerImporTemplates() {
+  document.getElementById('input_impor_template').click();
+}
+
+/**
+ * Fitur: Menangani file yang dipilih untuk diimpor
+ */
+function handleImporFile(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      // Parsing langsung hasil pembacaan file sebagai JSON
+      const importedData = JSON.parse(e.target.result);
+
+      if (!Array.isArray(importedData)) throw new Error("Format data harus berupa Array JSON.");
+
+      setLoading(true, "Mengimpor Template...");
+      google.script.run.withSuccessHandler(function(res) {
+        setLoading(false);
+        if (res.status === "SUCCESS") {
+          Swal.fire('Impor Berhasil', res.message, 'success');
+          loadKoleksiDatabase();
+        } else {
+          tampilkanToast("error", "GAGAL", res.message);
+        }
+        event.target.value = ''; // Reset input
+      }).imporTemplatesBatch(importedData);
+    } catch (err) {
+      Swal.fire('File Tidak Valid', 'Pastikan file adalah format JSON template yang benar.', 'error');
+    }
+  };
+  reader.readAsText(file);
+}
+
+function loadKoleksiDatabase() {
+  const select = document.getElementById('in_pilih_template');
+  if (!select) return;
+  
+  setLoading(true, "Sinkronisasi template...");
+  google.script.run
+  .withSuccessHandler(function(data) {
+    setLoading(false);
+    window.cacheTemplates = data || [];
+    renderDropdownTemplate(window.cacheTemplates);
+      renderSettingsTemplateList(); // Refresh list di modal pengaturan juga
+  })
+  .withFailureHandler(function(err) { console.error("Gagal memuat database: ", err); })
+  .ambilSemuaTemplate(); 
+}
+
+function renderDropdownTemplate(data) {
+  const select = document.getElementById('in_pilih_template');
+  if (!select) return;
+  
+  select.innerHTML = '<option value="">-- Buat Surat Baru (Kosong) --</option>';
+
+    if (!data || data.length === 0) {
+      let opt = document.createElement('option');
+      opt.disabled = true;
+      opt.text = "Tidak ada template yang tersimpan";
+      select.appendChild(opt);
+    } else {
+      data.forEach((tpl, i) => {
+        let opt = document.createElement('option');
+        // Cari index asli dari cacheTemplates agar sinkron saat pilihTemplateDinamis dipanggil
+        const originalIdx = window.cacheTemplates.findIndex(item => item.nama === tpl.nama);
+        opt.value = originalIdx; 
+        opt.text = "📄 " + tpl.nama;
+        select.appendChild(opt);
+      });
+    }
+}
+
+function filterTemplate(query) {
+  const resultsDiv = document.getElementById('search_results_list');
+  if (!window.cacheTemplates || !resultsDiv) return;
+
+  if (!query || query.trim() === "") {
+    resultsDiv.innerHTML = "";
+    resultsDiv.classList.add('hidden');
+    return;
+  }
+
+  const filtered = window.cacheTemplates.filter(t => 
+    t.nama.toLowerCase().includes(query.toLowerCase())
+  );
+
+  if (filtered.length === 0) {
+    resultsDiv.innerHTML = '<div class="p-4 text-xs text-slate-400 text-center italic">Template tidak ditemukan...</div>';
+  } else {
+    resultsDiv.innerHTML = filtered.map(t => {
+      const idx = window.cacheTemplates.findIndex(item => item.nama === t.nama);
+      return `
+        <div onclick="pilihDariPencarian(${idx}, '${t.nama.replace(/'/g, "\\'")}')" 
+             class="p-3 text-xs hover:bg-sky-50 cursor-pointer flex items-center gap-3 transition-colors group">
+          <div class="w-7 h-7 rounded-lg bg-slate-100 group-hover:bg-sky-100 flex items-center justify-center transition-colors">
+            <i class="fa-regular fa-file-lines text-slate-400 group-hover:text-sky-600"></i>
+          </div>
+          <div class="flex flex-col overflow-hidden">
+            <span class="font-semibold text-slate-700 group-hover:text-sky-700 truncate">${t.nama}</span>
+            <span class="text-[9px] text-slate-400 truncate">${t.perihal || 'Tanpa Perihal'}</span>
+          </div>
+        </div>`;
+    }).join('');
+  }
+  resultsDiv.classList.remove('hidden');
+}
+
+function pilihDariPencarian(idx, nama) {
+  const select = document.getElementById('in_pilih_template');
+  if (select) select.value = idx;
+  document.getElementById('search_results_list').classList.add('hidden');
+  pilihTemplateDinamis(idx);
+}
+
+function pilihTemplateDinamis(idx) {
+  const searchBox = document.getElementById('search_template');
+  const inSid = document.getElementById('in_serial_id');
+  if (inSid) {
+    inSid.value = ""; // Pastikan ID dikosongkan agar generate ID baru untuk instance surat ini
+    shortUrlCache = "";
+    lastSidForShortening = "";
+  }
+
+  if (idx === "" || !window.cacheTemplates || !window.cacheTemplates[idx]) {
+    if(document.getElementById('in_nomor')) document.getElementById('in_nomor').value = "";
+    if(document.getElementById('in_perihal')) document.getElementById('in_perihal').value = "";
+    if(document.getElementById('in_penerima')) document.getElementById('in_penerima').value = "";
+    if(document.getElementById('in_lampiran')) document.getElementById('in_lampiran').value = "-";
+    if(document.getElementById('in_pembuka')) document.getElementById('in_pembuka').value = "";
+      setIsiEditorValue(t.isi || "");
+  if(document.getElementById('in_tembusan')) document.getElementById('in_tembusan').value = t.tembusan || "";
+
+  // Selalu gunakan tanggal hari ini (lokal) meskipun memuat template
+  const inputTgl = document.getElementById('in_tanggal');
+  if (inputTgl) {
+    const now = new Date();
+    inputTgl.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+
+  if (searchBox) searchBox.value = "";
+  shortUrlCache = "";
+  lastSidForShortening = "";
+  if (typeof updateLivePreview === "function") updateLivePreview();
+  return;
+}
+
+
+  const t = window.cacheTemplates[idx];
+  if (searchBox) searchBox.value = t.nama;
+  
+  if(document.getElementById('in_perihal')) document.getElementById('in_perihal').value = t.perihal || "";
+  if(document.getElementById('in_penerima')) document.getElementById('in_penerima').value = t.penerima || "";
+  if(document.getElementById('in_lampiran')) document.getElementById('in_lampiran').value = t.lampiran || "-";
+  if(document.getElementById('in_pembuka')) document.getElementById('in_pembuka').value = t.pembuka || "";
+  if(document.getElementById('in_layout_type')) document.getElementById('in_layout_type').value = t.layout || "standard";
+  setIsiEditorValue(t.isi || "");
+  if(document.getElementById('in_tembusan')) document.getElementById('in_tembusan').value = t.tembusan || "";
+
+  // Set tanggal ke hari ini (mengabaikan tanggal default di template agar otomatis terbaru)
+  const inputTgl = document.getElementById('in_tanggal');
+  if (inputTgl) {
+    const now = new Date();
+    inputTgl.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+
+  // Otomatis perbarui nomor surat ke urutan terbaru berdasarkan klasifikasi template
+  const parts = (t.nomor || "").split('/');
+  if (parts.length > 0 && parts[0]) {
+    const selectKlas = document.getElementById('in_kode_klasifikasi');
+    if (selectKlas) {
+      selectKlas.value = parts[0];
+      mintaNomorOtomatis();
+    }
+  }
+
+  shortUrlCache = "";
+  lastSidForShortening = "";
+  if (typeof updateLivePreview === "function") updateLivePreview();
+  
+  tampilkanToast("success", "TEMPLATE DIMUAT", `Draft '${t.nama}' berhasil diterapkan ke form.`);
+
+  // Deteksi Tipe Template (Siswa vs Guru)
+  const keywordSiswa = ["siswa", "skl", "pip", "ijazah", "lulus", "raport", "nilai"];
+  const keywordGuru = ["guru", "tugas", "pbm", "sk pbm", "pembagian tugas"];
+  const butuhSiswa = keywordSiswa.some(k => t.nama.toLowerCase().includes(k) || (t.isi && t.isi.toLowerCase().includes(k)));
+  const butuhGuru = keywordGuru.some(k => t.nama.toLowerCase().includes(k) || (t.isi && t.isi.toLowerCase().includes(k)));
+  
+  const sectionSiswa = document.getElementById('section-pilih-siswa');
+
+  if (sectionSiswa) {
+    if (butuhSiswa) {
+      sectionSiswa.classList.remove('hidden');
+    } else {
+      sectionSiswa.classList.add('hidden');
+      window.selectedSiswa = null;
+    }
+  }
+  const sectionGuru = document.getElementById('section-pilih-guru');
+  if (sectionGuru) {
+    if (butuhGuru) sectionGuru.classList.remove('hidden');
+    else {
+      sectionGuru.classList.add('hidden');
+      window.selectedGuru = null;
+    }
+  }
+}
+
+// =============================================================
+// LOGIKA PENCARIAN SISWA
+// =============================================================
+function filterSiswa(query) {
+  const resultsDiv = document.getElementById('siswa_results_list');
+  if (!resultsDiv) return;
+  if (!query || query.length < 3) {
+    resultsDiv.innerHTML = "";
+    resultsDiv.classList.add('hidden');
+    return;
+  }
+
+  google.script.run.withSuccessHandler(function(data) {
+    if (!data || data.length === 0) {
+      resultsDiv.innerHTML = '<div class="p-3 text-[10px] text-slate-400 text-center italic">Siswa tidak ditemukan...</div>';
+    } else {
+      resultsDiv.innerHTML = data.map(s => {
+        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(s))));
+        return `
+          <div onclick="pilihSiswa('${encoded}')" 
+               class="p-3 text-xs hover:bg-emerald-50 cursor-pointer flex items-center justify-between group transition-colors">
+            <div class="flex items-center gap-3">
+              <div class="w-8 h-8 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 font-bold text-[10px]">
+                ${s.Nama.charAt(0)}
+              </div>
+              <div class="flex flex-col overflow-hidden">
+                <span class="font-bold text-slate-700 truncate uppercase">${s.Nama}</span>
+                <span class="text-[9px] text-slate-400">NISN: ${s.NISN} | Kelas: ${s.Kelas}</span>
+              </div>
+            </div>
+            ${window.isBatchMode ? '<i class="fa fa-plus-circle text-emerald-400"></i>' : ''}
+          </div>`;
+      }).join('');
+    }
+    resultsDiv.classList.remove('hidden');
+  }).cariSiswa(query);
+}
+
+function pilihSiswa(encodedData) {
+  try {
+    const data = JSON.parse(decodeURIComponent(escape(atob(encodedData))));
+    
+    if (window.isBatchMode) {
+      // Cek apakah sudah ada dalam list
+      if (!window.selectedSiswaList.some(s => s.NISN === data.NISN)) {
+        window.selectedSiswaList.push(data);
+        tampilkanToast("success", "DITAMBAHKAN", `${data.Nama} masuk dalam antrean cetak.`);
+      }
+      const searchInp = document.getElementById('search_siswa');
+      if (searchInp) {
+        searchInp.value = "";
+        searchInp.focus();
+      }
+      renderSelectedSiswaList();
+    } else {
+      window.selectedSiswa = data;
+      document.getElementById('search_siswa').value = data.Nama;
+      document.getElementById('siswa-selected-badge')?.classList.remove('hidden');
+      tampilkanToast("success", "SISWA TERPILIH", `${data.Nama} terkoneksi.`);
+    }
+
+    document.getElementById('siswa_results_list').classList.add('hidden');
+    updateLivePreview();
+  } catch (e) {
+    tampilkanToast("error", "GAGAL", "Gagal memproses data siswa.");
+  }
+}
+
+function toggleBatchMode(val) {
+  window.isBatchMode = val;
+  window.selectedSiswaList = [];
+  window.selectedSiswa = null;
+  document.getElementById('siswa_selected_list').classList.toggle('hidden', !val);
+  document.getElementById('siswa_selected_list').innerHTML = "";
+  document.getElementById('search_siswa').value = "";
+  updateLivePreview();
+}
+
+function renderSelectedSiswaList() {
+  const container = document.getElementById('siswa_selected_list');
+  container.innerHTML = window.selectedSiswaList.map((s, i) => `
+    <div class="flex items-center gap-1.5 px-2 py-1 bg-emerald-600 text-white text-[9px] font-bold rounded-lg animate-in zoom-in duration-200">
+      <span class="max-w-[80px] truncate uppercase">${s.Nama}</span>
+      <button onclick="hapusSiswaDariBatch(${i})" class="hover:text-red-200"><i class="fa fa-times-circle"></i></button>
+    </div>
+  `).join('');
+}
+
+function hapusSiswaDariBatch(index) {
+  window.selectedSiswaList.splice(index, 1);
+  renderSelectedSiswaList();
+  updateLivePreview();
+}
+
+function muatDataArsip() {
+  const searchArsip = document.getElementById('search_arsip');
+  if(searchArsip) searchArsip.value = ""; // Reset pencarian saat memuat ulang
+  
+  const box = document.getElementById('kontainer-arsip');
+  // Render Skeleton Sidebar
+  if(box) box.innerHTML = Array(4).fill(0).map(() => `
+    <div class="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 space-y-2">
+      <div class="flex justify-between"><div class="h-3 w-20 skeleton-box rounded"></div><div class="h-3 w-12 skeleton-box rounded"></div></div>
+      <div class="h-4 w-full skeleton-box rounded"></div>
+      <div class="h-3 w-2/3 skeleton-box rounded"></div>
+    </div>
+  `).join('');
+
+  google.script.run.withSuccessHandler(function(data) {
+    window.cacheArsip = data || [];
+    renderDaftarArsip(window.cacheArsip);
+    updateHeaderStats();
+    if (typeof syncArchiveStatusUI === 'function') syncArchiveStatusUI();
+  }).dapatkanRiwayatArsip();
+}
+
+function renderDaftarArsip(data) {
+  const box = document.getElementById('kontainer-arsip');
+  if(!box) return;
+  
+  if(!data || data.length === 0) {
+    box.innerHTML = '<div class="text-center text-xs text-slate-400 py-5">Arsip tidak ditemukan atau masih kosong.</div>';
+    return;
+  }
+
+  let htmlArsip = '';
+  data.forEach((row, i) => {
+    let teksPenerima = row.penerima ? String(row.penerima).replace(/\n/g, " ") : "-";
+    let teksPerihal = row.perihal ? String(row.perihal) : "(Tanpa Perihal)";
+    let tglSuratResmi = row.tanggal ? row.tanggal.split('T')[0] : "-";
+
+    htmlArsip += `
+    <div class="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-brand-blue transition-all cursor-default group relative">
+      <div class="flex items-center justify-between mb-1">
+        <span class="text-[9px] font-mono font-bold text-brand-blue bg-blue-50 px-1.5 py-0.5 rounded truncate max-w-[180px]">${row.nomor}</span>
+        <span class="text-[9px] text-slate-400 font-medium">${tglSuratResmi}</span>
+      </div>
+      <div class="text-[11px] font-bold text-slate-700 truncate pr-8 mb-0.5">${teksPerihal}</div>
+      <div class="text-[10px] text-slate-400 truncate italic">Kpd: ${teksPenerima}</div>
+      
+      <button onclick="konfirmasiHapusArsip('${row.id}', '${row.nomor.replace(/'/g, "\\'")}')" 
+        class="absolute right-10 bottom-2 w-7 h-7 flex items-center justify-center bg-red-500 text-white rounded-lg shadow-md opacity-0 group-hover:opacity-100 transform translate-y-1 group-hover:translate-y-0 transition-all duration-200"
+        title="Hapus Arsip">
+        <i class="fa fa-trash text-[10px]"></i>
+      </button>
+
+      <button onclick="cetakUlangArsip('${btoa(unescape(encodeURIComponent(JSON.stringify(row))))}')" 
+        class="absolute right-2 bottom-2 w-7 h-7 flex items-center justify-center bg-brand-blue text-white rounded-lg shadow-md opacity-0 group-hover:opacity-100 transform translate-y-1 group-hover:translate-y-0 transition-all duration-200"
+        title="Gunakan Data Ini">
+        <i class="fa fa-file-import text-[10px]"></i>
+      </button>
+    </div>`;
+  });
+  box.innerHTML = htmlArsip;
+}
+
+function filterArsip(query) {
+  if (!window.cacheArsip) return;
+  const q = query.toLowerCase().trim();
+  if (q === "") {
+    renderDaftarArsip(window.cacheArsip);
+    return;
+  }
+
+  const filtered = window.cacheArsip.filter(row => 
+    (row.nomor && row.nomor.toLowerCase().includes(q)) ||
+    (row.perihal && row.perihal.toLowerCase().includes(q)) ||
+    (row.penerima && row.penerima.toLowerCase().includes(q))
+  );
+  renderDaftarArsip(filtered);
+}
+
+/**
+ * Fitur: Ekspor Log Arsip ke Excel (Buku Agenda)
+ */
+function eksporArsipExcel() {
+  Swal.fire({
+    title: 'Cetak Agenda Surat',
+    text: 'Masukkan tahun arsip yang ingin diekspor ke Excel:',
+    input: 'number',
+    inputValue: new Date().getFullYear(),
+    showCancelButton: true,
+    confirmButtonText: 'Unduh Excel',
+    cancelButtonText: 'Batal',
+    confirmButtonColor: '#10b981',
+    inputValidator: (value) => {
+      if (!value) return 'Tahun wajib diisi!'
+    }
+  }).then((result) => {
+    if (result.isConfirmed) {
+      const tahun = result.value;
+      setLoading(true, "Menyusun Buku Agenda " + tahun + "...");
+      
+      google.script.run
+        .withSuccessHandler(function(data) {
+          setLoading(false);
+          if (!data || data.length === 0) {
+            tampilkanToast("warning", "DATA KOSONG", `Tidak ada rekaman surat pada tahun ${tahun}.`);
+            return;
+          }
+          
+          // Ambil Identitas Sekolah dari Sidebar untuk Header Excel
+          const namaSekolah = document.getElementById('in_kop_sekolah')?.value || "SDN MOJOGEMI 02";
+          const daerah = document.getElementById('in_kop_daerah')?.value || "";
+          const subDinas = document.getElementById('in_kop_sub')?.value || "";
+          const alamatSekolah = document.getElementById('in_kop_alamat')?.value || "";
+          const kontakSekolah = document.getElementById('in_kop_kontak')?.value || "";
+
+          // 1. Buat Header ala Kop Surat
+          const headerAoA = [
+            ["", daerah.toUpperCase(), ""],
+            ["", subDinas.toUpperCase(), ""],
+            ["[LOGO KIRI]", namaSekolah.toUpperCase(), "[LOGO KANAN]"],
+            ["", "BUKU AGENDA SURAT KELUAR TAHUN " + tahun, ""],
+            ["", alamatSekolah + " | " + kontakSekolah, ""],
+            [""], // Baris Kosong
+          ];
+
+          // 2. Buat Worksheet mulai dari header
+          const ws = XLSX.utils.aoa_to_sheet(headerAoA);
+
+          // 3. Tambahkan data tabel di bawah header (Mulai dari baris ke-7)
+          XLSX.utils.sheet_add_json(ws, data, { origin: "A7" });
+
+          // 4. Pengaturan lebar kolom dasar
+          ws['!cols'] = [
+            { wch: 22 }, { wch: 28 }, { wch: 35 }, { wch: 20 }, { wch: 25 }, { wch: 25 }, { wch: 25 }
+          ];
+
+
+          // 5. Build Workbook dan Unduh
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Agenda_" + tahun);
+          XLSX.writeFile(wb, `Buku_Agenda_Surat_Keluar_${tahun}.xlsx`);
+
+          tampilkanToast("success", "EKSPOR BERHASIL", "File Excel siap dicetak.");
+        })
+        .withFailureHandler(err => { setLoading(false); tampilkanToast("error", "ERROR", err.toString()); })
+        .ambilDataArsipUntukEkspor(tahun);
+    }
+  });
+}
+
+/**
+ * Fitur: Ekspor Log Surat Masuk ke Excel (Buku Agenda)
+ */
+function eksporSuratMasukExcel() {
+  Swal.fire({
+    title: 'Cetak Agenda Surat Masuk',
+    text: 'Masukkan tahun terima yang ingin diekspor ke Excel:',
+    input: 'number',
+    inputValue: new Date().getFullYear(),
+    showCancelButton: true,
+    confirmButtonText: 'Unduh Excel',
+    cancelButtonText: 'Batal',
+    confirmButtonColor: '#10b981',
+    inputValidator: (value) => {
+      if (!value) return 'Tahun wajib diisi!'
+    }
+  }).then((result) => {
+    if (result.isConfirmed) {
+      const tahun = result.value;
+      setLoading(true, "Menyusun Buku Agenda Surat Masuk " + tahun + "...");
+      
+      google.script.run
+        .withSuccessHandler(function(data) {
+          setLoading(false);
+          if (!data || data.length === 0) {
+            tampilkanToast("warning", "DATA KOSONG", `Tidak ada rekaman surat masuk pada tahun ${tahun}.`);
+            return;
+          }
+          
+          const namaSekolah = document.getElementById('in_kop_sekolah')?.value || "SDN MOJOGEMI 02";
+          const daerah = document.getElementById('in_kop_daerah')?.value || "";
+          const subDinas = document.getElementById('in_kop_sub')?.value || "";
+          const alamatSekolah = document.getElementById('in_kop_alamat')?.value || "";
+          const kontakSekolah = document.getElementById('in_kop_kontak')?.value || "";
+
+          const headerAoA = [
+            ["", daerah.toUpperCase(), ""],
+            ["", subDinas.toUpperCase(), ""],
+            ["[LOGO KIRI]", namaSekolah.toUpperCase(), "[LOGO KANAN]"],
+            ["", "BUKU AGENDA SURAT MASUK TAHUN " + tahun, ""],
+            ["", alamatSekolah + " | " + kontakSekolah, ""],
+            [""], 
+          ];
+
+          const ws = XLSX.utils.aoa_to_sheet(headerAoA);
+          XLSX.utils.sheet_add_json(ws, data, { origin: "A7" });
+          ws['!cols'] = [
+            { wch: 22 }, { wch: 28 }, { wch: 30 }, { wch: 35 }, { wch: 20 }, { wch: 40 }
+          ];
+
+          const wb = XLSX.utils.book_new();
+          XLSX.utils.book_append_sheet(wb, ws, "Agenda_Masuk_" + tahun);
+          XLSX.writeFile(wb, `Buku_Agenda_Surat_Masuk_${tahun}.xlsx`);
+          tampilkanToast("success", "EKSPOR BERHASIL", "File Excel Agenda Masuk siap.");
+        })
+        .withFailureHandler(err => { setLoading(false); tampilkanToast("error", "ERROR", err.toString()); })
+        .ambilDataSuratMasukUntukEkspor(tahun);
+    }
+  });
+}
+
+function konfirmasiHapusArsip(id, nomor) {
+  Swal.fire({
+    title: 'Hapus Arsip?',
+    text: `Surat nomor ${nomor} akan dihapus permanen dari database log.`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#e11d48',
+    cancelButtonColor: '#64748b',
+    confirmButtonText: 'Ya, Hapus',
+    cancelButtonText: 'Batal'
+  }).then((result) => {
+    if (result.isConfirmed) {
+      setLoading(true, "Menghapus arsip...");
+      google.script.run.withSuccessHandler(function(res) {
+        setLoading(false);
+        if(res.status === "SUCCESS") {
+          tampilkanToast("success", "TERHAPUS", res.message);
+          muatDataArsip();
+        } else {
+          tampilkanToast("error", "GAGAL", res.message);
+        }
+      }).hapusDataArsip(id, nomor);
+    }
+  });
+}
+
+function cetakUlangArsip(encodedData) {
+  try {
+    const row = JSON.parse(decodeURIComponent(escape(atob(encodedData))));
+    
+    // SINKRONISASI TOTAL: Menambahkan elemen lampiran, pembuka, dan tanggal yang sempat tertinggal
+    if(document.getElementById('in_nomor')) document.getElementById('in_nomor').value = row.nomor || "";
+    if(document.getElementById('in_perihal')) document.getElementById('in_perihal').value = row.perihal || "";
+    if(document.getElementById('in_penerima')) document.getElementById('in_penerima').value = row.penerima || "";
+    if(document.getElementById('in_lampiran')) document.getElementById('in_lampiran').value = row.lampiran || "-";
+    if(document.getElementById('in_pembuka')) document.getElementById('in_pembuka').value = row.pembuka || "";
+    if(document.getElementById('in_layout_type')) document.getElementById('in_layout_type').value = row.layout || "standard";
+    setIsiEditorValue(row.isi || "");
+    if(document.getElementById('in_tembusan')) document.getElementById('in_tembusan').value = row.tembusan || "";
+    
+    // Pulihkan Serial ID dari arsip agar QR Code tetap sama dengan dokumen asli untuk verifikasi
+    const inSid = document.getElementById('in_serial_id');
+    if (inSid) {
+      inSid.value = (row.sid && row.sid !== "N/A") ? row.sid : "";
+      shortUrlCache = ""; 
+      lastSidForShortening = "";
+    }
+
+    const inputTgl = document.getElementById('in_tanggal');
+    if (inputTgl && row.tanggal) {
+      inputTgl.value = String(row.tanggal).includes('T') ? row.tanggal.split('T')[0] : row.tanggal;
+    }
+
+    shortUrlCache = "";
+    lastSidForShortening = "";
+    switchTab('isi');
+    if (typeof updateLivePreview === "function") updateLivePreview();
+
+    // TRIGGER OTOMATIS: Munculkan panel Guru atau Siswa berdasarkan isi arsip
+    const kwSiswa = ["siswa", "skl", "pip", "ijazah", "lulus", "raport", "nilai"];
+    const kwGuru = ["guru", "tugas", "pbm", "sk pbm", "pembagian tugas"];
+    const subjek = (row.perihal || "") + (row.isi || "");
+    const isSiswa = kwSiswa.some(k => subjek.toLowerCase().includes(k));
+    const isGuru = kwGuru.some(k => subjek.toLowerCase().includes(k));
+
+    if (document.getElementById('section-pilih-siswa')) document.getElementById('section-pilih-siswa').classList.toggle('hidden', !isSiswa);
+    if (document.getElementById('section-pilih-guru')) document.getElementById('section-pilih-guru').classList.toggle('hidden', !isGuru);
+
+    // AUTO-LOAD DATA SISWA/GURU DARI REF_ID
+    if (row.ref_id) {
+      if (isSiswa) {
+        google.script.run.withSuccessHandler(data => {
+          if (data && data.length > 0) {
+            window.selectedSiswa = data[0];
+            if(document.getElementById('search_siswa')) document.getElementById('search_siswa').value = data[0].Nama;
+            updateLivePreview();
+          }
+        }).cariSiswa(row.ref_id);
+      } else if (isGuru) {
+        google.script.run.withSuccessHandler(data => {
+          if (data && data.length > 0) {
+            window.selectedGuru = data[0];
+            if(document.getElementById('search_guru')) document.getElementById('search_guru').value = data[0].Nama;
+            updateLivePreview();
+          }
+        }).cariGuru(row.ref_id);
+      }
+    }
+
+    tampilkanToast("success", "ARSIP DIMUAT", "Data riwayat surat berhasil ditarik ke form.");
+  } catch (e) {
+    tampilkanToast("error", "GAGAL MEMUAT", "Data arsip corrupt atau tidak valid.");
+  }
+}
+
+/**
+ * Fitur Baru: Unduh Sertifikat Verifikasi sebagai Gambar
+ */
+function unduhSertifikat() {
+  const card = document.getElementById('v-card');
+  const noSurat = document.getElementById('v-no').innerText || "Sertifikat";
+  
+  setLoading(true, "Menyiapkan Gambar...");
+  
+  html2canvas(card, { scale: 2, useCORS: true }).then(canvas => {
+    const link = document.createElement('a');
+    link.download = `Sertifikat_Verifikasi_${noSurat.replace(/\//g, '_')}.png`;
+    link.href = canvas.toDataURL("image/png");
+    link.click();
+    setLoading(false);
+    tampilkanToast("success", "UNDUH SELESAI", "Sertifikat berhasil disimpan ke perangkat.");
+  });
+}
+
+/**
+ * Fitur Tema: Dark Mode Toggle
+ */
+function toggleDarkMode() {
+  const html = document.documentElement;
+  const icon = document.getElementById('theme-icon');
+  if (html.classList.contains('dark')) {
+    html.classList.remove('dark');
+    localStorage.setItem('kliksurat_theme_mode', 'light');
+    icon.className = 'fa fa-moon';
+  } else {
+    html.classList.add('dark');
+    localStorage.setItem('kliksurat_theme_mode', 'dark');
+    icon.className = 'fa fa-sun';
+  }
+}
+
+/**
+ * Fitur Tema: Accent Color Switcher
+ */
+function changeAccentColor(color) {
+  document.documentElement.style.setProperty('--brand-color', color);
+  localStorage.setItem('kliksurat_accent_color', color);
+  updateLivePreview();
+  tampilkanToast("success", "TEMA BERUBAH", "Warna aksen aplikasi telah diperbarui.");
+}
+
+function applySavedTheme() {
+  const savedMode = localStorage.getItem('kliksurat_theme_mode');
+  const savedColor = localStorage.getItem('kliksurat_accent_color');
+  const html = document.documentElement;
+  const icon = document.getElementById('theme-icon');
+
+  if (savedMode === 'dark') {
+    html.classList.add('dark');
+    if (icon) icon.className = 'fa fa-sun';
+  } else {
+    html.classList.remove('dark');
+    if (icon) icon.className = 'fa fa-moon';
+  }
+
+  if (savedColor) {
+    html.style.setProperty('--brand-color', savedColor);
+  }
+}
+
+// =============================================================
+// UTILITIES / FITUR ALAT BANTU (NIP, AUTO-NUMBER, TABS)
+// =============================================================
+function formatNIPInput(el) {
+  const original = el.value;
+  // Cek jika mengandung huruf
+  if (/[a-zA-Z]/.test(original)) {
+    tampilkanToast("warning", "FORMAT NIP", "NIP biasanya hanya berisi angka. Pastikan input Anda benar.");
+  }
+  
+  // Contoh validasi: jika ingin memaksa angka tapi dengan notifikasi
+  // const cleaned = original.replace(/\D/g, '');
+  // if (original !== cleaned) {
+  //   el.value = cleaned;
+  //   tampilkanToast("info", "AUTO-CLEAN", "Karakter non-angka dihapus otomatis.");
+  // }
+}
+
+function mintaNomorOtomatis() {
+  const kodeKlasifikasi = document.getElementById('in_kode_klasifikasi')?.value || "400.3.5";
+  google.script.run.withSuccessHandler(function(nomorBaru) {
+    document.getElementById('in_nomor').value = nomorBaru;
+    if (typeof updateLivePreview === "function") updateLivePreview();
+    tampilkanToast("success", "NOMOR DIGENERATE", "Nomor surat berikutnya telah dimasukkan.");
+  }).generateNomorSuratOtomatis(kodeKlasifikasi); 
+}
+
+/**
+ * Fungsi pengecekan duplikasi nomor secara manual ketika input kehilangan fokus
+ */
+function validasiNomorManual() {
+  const el = document.getElementById('in_nomor');
+  const nomor = el.value.trim();
+  if (!nomor || nomor === "") {
+    el.classList.remove('border-red-500', 'ring-red-200');
+    return;
+  }
+
+  // Beri indikasi visual bahwa pengecekan sedang berlangsung
+  el.classList.add('opacity-50');
+
+  // Ekstraksi data untuk pengecekan lintas klasifikasi (Pattern: KODE/URUTAN/.../TAHUN)
+  const parts = nomor.split('/');
+  if (parts.length < 4) {
+      // Fallback jika format tidak standar: cek string utuh
+      google.script.run.withSuccessHandler(function(isDuplikat) {
+          el.classList.remove('opacity-50');
+          if (isDuplikat) {
+              tampilkanToast("warning", "NOMOR TERSEDIA", "Nomor ini sudah ada, sedang menyesuaikan...");
+              el.classList.add('border-red-500', 'ring-2', 'ring-red-200');
+              mintaNomorOtomatis(); 
+          }
+      }).cekFullNomorDuplikat(nomor);
+      return;
+  }
+
+  const urutan = parts[1];
+  const tahun = parts[parts.length - 1];
+
+  google.script.run
+    .withSuccessHandler(function(status) {
+      el.classList.remove('opacity-50');
+      if (status === "DUPLICATE") {
+        tampilkanToast("warning", "NOMOR DISESUAIKAN", `Nomor urut ${urutan} sudah digunakan. Menyesuaikan...`);
+        el.classList.add('border-red-500', 'ring-2', 'ring-red-200');
+        // KEMBALIKAN KE NOMOR TERAKHIR OTOMATIS
+        mintaNomorOtomatis();
+      } else if (status === "JUMP") {
+        tampilkanToast("warning", "URUTAN DIPERBAIKI", `Nomor urut ${urutan} melompat. Mengembalikan ke urutan benar.`);
+        el.classList.add('border-red-500', 'ring-2', 'ring-red-200');
+        mintaNomorOtomatis();
+      } else if (status === "VALID") {
+        el.classList.remove('border-red-500', 'ring-2', 'ring-red-200');
+        tampilkanToast("success", "NOMOR TERSEDIA", "Nomor ini unik dan dapat digunakan.");
+      }
+    })
+    .withFailureHandler(function(err) {
+      el.classList.remove('opacity-50');
+      tampilkanToast("error", "KESALAHAN SERVER", "Gagal memvalidasi nomor. Periksa koneksi internet.");
+      console.error("Duplicate Check Error:", err);
+    })
+    .cekNomorDuplikat(urutan, tahun);
+}
+
+function switchTab(target) {
+  ['isi', 'redaksi', 'kop', 'ttd', 'arsip', 'masuk'].forEach(t => {
+    const section = document.getElementById(`section-${t}`);
+    const btn = document.getElementById(`btn-tab-${t}`);
+    if (section) section.classList.add('hidden');
+    if (btn) {
+      // Gunakan classList agar tidak menghapus class 'hidden' yang sudah ada
+      btn.classList.remove('border-brand-blue', 'text-brand-blue', 'bg-white');
+      btn.classList.add('border-transparent', 'text-slate-500', 'hover:bg-slate-100');
+    }
+  });
+  
+  const targetSection = document.getElementById(`section-${target}`);
+  const targetBtn = document.getElementById(`btn-tab-${target}`);
+  if (targetSection) targetSection.classList.remove('hidden');
+  if (targetBtn) {
+    // Aktifkan tab yang dipilih
+    targetBtn.classList.remove('border-transparent', 'text-slate-500', 'hover:bg-slate-100');
+    targetBtn.classList.add('border-brand-blue', 'text-brand-blue', 'bg-white');
+  }
+}
+
+function tampilkanToast(tipe, judul, pesan) {
+  const container = document.getElementById('toast-container');
+  if(!container) return;
+
+  let bColor, icon, bg;
+  if (tipe === "success") {
+    bColor = "border-emerald-500"; icon = "fa-circle-check text-emerald-600"; bg = "bg-emerald-50";
+  } else if (tipe === "warning") {
+    bColor = "border-amber-500"; icon = "fa-triangle-exclamation text-amber-600"; bg = "bg-amber-50";
+  } else if (tipe === "info") {
+    bColor = "border-blue-500"; icon = "fa-circle-info text-blue-600"; bg = "bg-blue-50";
+  } else {
+    bColor = "border-red-500"; icon = "fa-circle-xmark text-red-600"; bg = "bg-red-50";
+  }
+
+  playToastSound(tipe);
+  const toast = document.createElement('div');
+  toast.className = `pointer-events-auto flex items-start gap-3 p-4 rounded-2xl bg-white/95 backdrop-blur-md border shadow-xl translate-x-full transition-all duration-300 opacity-0 ${bColor}`;
+  toast.innerHTML = `<div class="flex-shrink-0 w-8 h-8 rounded-xl ${bg} flex items-center justify-center"><i class="fa-solid ${icon}"></i></div><div class="flex-1"><h5 class="text-xs font-bold text-brand-navy uppercase tracking-wide">${judul}</h5><p class="text-xs text-slate-500 mt-0.5 leading-relaxed">${pesan}</p></div>`;
+  container.appendChild(toast);
+  setTimeout(() => toast.classList.remove('translate-x-full', 'opacity-0'), 10);
+  setTimeout(() => { toast.classList.add('translate-x-full', 'opacity-0'); setTimeout(() => toast.remove(), 300); }, 7000);
+}
+
+/**
+ * Fungsi untuk memainkan efek suara feedback (Web Audio API)
+ */
+function playToastSound(tipe) {
+  try {
+    const context = new (window.AudioContext || window.webkitAudioContext)();
+    const osc = context.createOscillator();
+    const gain = context.createGain();
+    
+    osc.connect(gain);
+    gain.connect(context.destination);
+    const now = context.currentTime;
+    
+    if (tipe === "success") {
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, now); // Nada A5
+      osc.frequency.exponentialRampToValueAtTime(1100, now + 0.1); // Naik ke C#6
+    } else {
+      osc.type = 'triangle';
+      osc.frequency.setValueAtTime(440, now); // Nada A4
+      osc.frequency.exponentialRampToValueAtTime(220, now + 0.2); // Turun pitch
+    }
+    
+    gain.gain.setValueAtTime(0.05, now); // Volume pelan agar tidak mengagetkan
+    gain.gain.exponentialRampToValueAtTime(0.01, now + 0.4);
+    
+    osc.start(now);
+    osc.stop(now + 0.4);
+  } catch (e) { console.log("Audio feedback blocked or not supported"); }
+}
+
+function setLoading(show, text="") {
+  const loader = document.getElementById('loading');
+  const loaderText = document.getElementById('loading-text');
+  if(!loader) return;
+
+  if(show) {
+    if(loaderText) loaderText.innerText = text || "Memproses...";
+    loader.classList.remove('hidden');
+    setTimeout(() => {
+      loader.classList.replace('opacity-0', 'opacity-100');
+    }, 10);
+  } else {
+    loader.classList.replace('opacity-100', 'opacity-0');
+    setTimeout(() => {
+      loader.classList.add('hidden');
+    }, 300); // Sesuai dengan durasi transition-opacity duration-300
+  }
+}
+
+// =============================================================
+// RUNTIME INITIALIZATION (STARTUP)
+// =============================================================
+function togglePassword() {
+  const pwdInput = document.getElementById('password');
+  const eyeIcon = document.getElementById('eye-icon');
+  
+  if (pwdInput.type === "password") {
+    pwdInput.type = "text";
+    eyeIcon.classList.remove('fa-eye');
+    eyeIcon.classList.add('fa-eye-slash'); // Ganti ikon ke mata tertutup
+  } else {
+    pwdInput.type = "password";
+    eyeIcon.classList.remove('fa-eye-slash');
+    eyeIcon.classList.add('fa-eye'); // Ganti ikon kembali ke mata terbuka
+  }
+}
+
+// Menutup hasil pencarian melayang jika pengguna mengklik di luar area
+document.addEventListener("click", function(event) {
+  const searchInput = document.getElementById('search_template');
+  const resultsList = document.getElementById('search_results_list');
+  if (searchInput && resultsList && !searchInput.contains(event.target) && !resultsList.contains(event.target)) {
+    resultsList.classList.add('hidden');
+  }
+});
+
+/**
+ * Refined Initialization Logic
+ */
+function initializeApp() {
+  // Detect Verification Mode (QR Scan)
+  if (globalParams && globalParams.mode === '1') {
+    runVerificationMode(globalParams.id);
+    return;
+  }
+
+  // Dashboard Initialization
+  setupDashboardUI();
+  initTinyMCEEditor();
+  
+  // Sesi dan Data
+  if (typeof periksaSesiLoginOtomatis === "function") periksaSesiLoginOtomatis();
+  
+  // Muat database pendukung di latar belakang setelah UI siap
+  setTimeout(() => {
+    loadKoleksiDatabase();
+    muatDataArsip();
+    loadKodeKlasifikasiSurat();
+    muatDraftAutosave();
+    setInterval(jalankanAutosave, 30000); // Autosave setiap 30 detik
+    
+    // Sinkronisasi ulang pratinjau tepat setelah font browser dipastikan siap (Loaded)
+        if (document.fonts) {
+          document.fonts.ready.then(() => {
+            if (typeof updateLivePreview === "function") updateLivePreview();
+            if (typeof stabilkanLivePreviewSetelahLayout === "function") stabilkanLivePreviewSetelahLayout();
+          });
+        }
+  }, 800);
+
+  if (!webAppUrl || webAppUrl === "" || webAppUrl.includes('undefined')) {
+    if (typeof google !== 'undefined') {
+      google.script.run
+        .withFailureHandler(err => console.warn("Failed to fetch Web App URL:", err))
+        .withSuccessHandler(url => {
+          if (url) { 
+            webAppUrl = url.replace(/\/dev$/, "/exec"); 
+          }
+        }).dapatkanUrlSkrip();
+    }
+  }
+}
+
+/**
+ * Logic for Verification Page
+ */
+function runVerificationMode(uid) {
+  document.getElementById('login-page').classList.add('hidden');
+  const vPage = document.getElementById('verification-page');
+  const vCard = document.getElementById('v-card');
+  
+  vPage.classList.remove('hidden');
+  setTimeout(() => {
+    vPage.classList.replace('opacity-0', 'opacity-100');
+    vCard.classList.replace('scale-95', 'scale-100');
+  }, 100);
+
+  document.getElementById('v-sid').innerText = uid || 'N/A';
+  document.getElementById('v-no').innerText = "Memverifikasi...";
+  document.getElementById('v-hal').innerText = "Mengambil data pangkalan...";
+  document.getElementById('v-ttd').innerText = "Otoritas Sekolah";
+
+  if (globalAppName) document.getElementById('v-footer-app-name').innerText = globalAppName;
+  if (globalAppName) document.getElementById('v-desc').innerText = `Informasi diverifikasi otomatis oleh Sistem Arsip ${globalAppName}`;
+  if (globalLogo) {
+    document.getElementById('v-logo').src = globalLogo;
+    document.getElementById('v-watermark').src = globalLogo;
+  }
+
+  setLoading(true, "Verifikasi Dokumen...");
+
+  if (uid && typeof google !== 'undefined') {
+    google.script.run
+      .withFailureHandler(err => {
+        console.error("Verification failed:", err);
+        document.getElementById('v-hal').innerText = "Error Koneksi Server";
+        document.getElementById('v-no').innerText = "NETWORK ERROR";
+        setLoading(false);
+      })
+      .withSuccessHandler(function(res) {
+        if (res.status === "SUCCESS") {
+          document.getElementById('v-no').innerText = res.no;
+          document.getElementById('v-hal').innerText = res.hal;
+          document.getElementById('v-ttd').innerText = res.ttd;
+        } else {
+          document.getElementById('v-no').innerText = "TIDAK VALID";
+          document.getElementById('v-hal').innerText = "Data Tidak Ditemukan";
+          document.getElementById('v-desc').innerText = "Peringatan: Dokumen ini tidak terdaftar di database resmi.";
+          document.getElementById('v-desc').className = "text-xs mb-8 italic leading-relaxed px-4 text-red-500 font-bold";
+        }
+        setLoading(false);
+      }).verifikasiSuratByUid(uid);
+  } else {
+    setLoading(false);
+  }
+}
+
+// =============================================================
+// MANAJEMEN DATABASE SISWA (CRUD)
+// =============================================================
+function bukaModalSiswa(tab = 'form') {
+  const form = document.getElementById('form-siswa');
+  form.reset();
+  switchTabSiswa(tab);
+  
+  // Jika ada siswa yang sedang dipilih di sidebar, muat ke form untuk diedit
+  if (window.selectedSiswa) {
+    isiFormSiswa(window.selectedSiswa);
+    document.getElementById('btn-hapus-siswa').classList.remove('hidden');
+  } else {
+    document.getElementById('btn-hapus-siswa').classList.add('hidden');
+  }
+  
+  document.getElementById('modal-siswa').classList.remove('hidden');
+}
+
+function isiFormSiswa(data) {
+    const form = document.getElementById('form-siswa');
+    Object.keys(data).forEach(key => {
+      const input = form.querySelector(`[name="${key}"]`);
+      if (input) input.value = window.selectedSiswa[key];
+    });
+}
+
+function tutupModalSiswa() {
+  document.getElementById('modal-siswa').classList.add('hidden');
+}
+
+function handleKetLulusChange(selectEl) {
+  const form = selectEl.closest('form');
+  const ijazahInput = form.querySelector('[name="Nomor_Ijazah"]');
+  if (!ijazahInput) return;
+  
+  if (selectEl.value === "BELUM LULUS / MASIH AKTIF") {
+    ijazahInput.value = "-";
+  } else if (ijazahInput.value === "-") {
+    ijazahInput.value = "";
+  }
+}
+
+function switchTabSiswa(target) {
+  const formArea = document.getElementById('siswa-tab-form');
+  const tableArea = document.getElementById('siswa-tab-table');
+  const btnForm = document.getElementById('tab-siswa-form-btn');
+  const btnTable = document.getElementById('tab-siswa-table-btn');
+
+  if (target === 'form') {
+    formArea.classList.remove('hidden'); tableArea.classList.add('hidden');
+    if(btnForm) btnForm.className = "py-2 border-b-2 border-brand-blue text-brand-blue";
+    if(btnTable) btnTable.className = "py-2 border-b-2 border-transparent text-slate-400 hover:text-slate-600";
+  } else {
+    formArea.classList.add('hidden'); tableArea.classList.remove('hidden');
+    if(btnForm) btnForm.className = "py-2 border-b-2 border-transparent text-slate-400 hover:text-slate-600";
+    if(btnTable) btnTable.className = "py-2 border-b-2 border-brand-blue text-brand-blue";
+    muatTabelSiswa();
+  }
+}
+
+function simpanDataSiswa() {
+  const form = document.getElementById('form-siswa');
+  const formData = new FormData(form);
+  const data = {};
+  formData.forEach((value, key) => data[key] = value);
+
+  if (!data.Nama || !data.NISN) {
+    tampilkanToast("error", "DATA TIDAK LENGKAP", "Nama dan NISN wajib diisi!");
+    return;
+  }
+
+  setLoading(true, "Menyimpan data siswa...");
+  google.script.run.withSuccessHandler(function(res) {
+    setLoading(false);
+    if (res.status === "SUCCESS") {
+      tampilkanToast("success", "BERHASIL", res.message);
+      window.selectedSiswa = data; // Update cache lokal
+      tutupModalSiswa();
+      muatTabelSiswa();
+      updateLivePreview();
+    } else {
+      tampilkanToast("error", "GAGAL", res.message);
+    }
+  }).simpanSiswaBaru(data);
+}
+
+function hapusDataSiswa(nisnManual, namaManual) {
+  const nisn = nisnManual || document.querySelector('#form-siswa [name="NISN"]').value;
+  const nama = namaManual || document.querySelector('#form-siswa [name="Nama"]').value;
+  if (!nisn) {
+    tampilkanToast("warning", "PILIH DATA", "Tidak ada data siswa yang dipilih untuk dihapus.");
+    return;
+  }
+
+  Swal.fire({
+    title: 'Hapus Siswa?',
+    text: `Seluruh data identitas dan nilai ${nama} (${nisn}) akan dihapus secara permanen.`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#e11d48',
+    confirmButtonText: 'Ya, Hapus Permanen',
+    cancelButtonText: 'Batal'
+  }).then((result) => {
+    if (result.isConfirmed) {
+      setLoading(true, "Menghapus...");
+      google.script.run.withSuccessHandler(res => {
+        setLoading(false);
+        tampilkanToast(res.status === "SUCCESS" ? "success" : "error", "HAPUS", res.message);
+        if (res.status === "SUCCESS") {
+          window.selectedSiswa = null;
+          if (!nisnManual) tutupModalSiswa();
+          muatTabelSiswa();
+          updateLivePreview();
+        }
+      }).hapusSiswa(nisn);
+    }
+  });
+}
+
+function muatTabelSiswa() {
+  const container = document.getElementById('tabel-siswa-body');
+  // Render Skeleton Table
+  // Clear filter inputs when loading new data
+  document.querySelectorAll('#siswa-tab-table input[data-filter-col]').forEach(input => {
+    input.value = '';
+  });
+  container.innerHTML = Array(5).fill(0).map(() => `
+    <tr class="border-b border-slate-50">
+      <td class="p-3"><div class="h-4 w-32 bg-slate-100 animate-pulse rounded"></div></td>
+      <td class="p-3"><div class="h-4 w-20 bg-slate-100 animate-pulse rounded"></div></td>
+      <td class="p-3"><div class="h-4 w-12 bg-slate-100 animate-pulse rounded"></div></td>
+      <td class="p-3"><div class="h-4 w-16 bg-slate-100 animate-pulse rounded"></div></td>
+      <td class="p-3"><div class="h-4 w-8 ml-auto skeleton-box rounded"></div></td>
+    </tr>
+  `).join('');
+  
+  google.script.run.withSuccessHandler(data => {
+    console.log("Data Siswa Diterima:", data); // Untuk debugging
+    window.fullCacheSiswa = data || [];
+    renderTabelSiswa(window.fullCacheSiswa);
+    updateHeaderStats();
+  }).ambilSemuaSiswa();
+}
+
+function filterTabelSiswa() {
+  const filters = {};
+  document.querySelectorAll('#siswa-tab-table input[data-filter-col]').forEach(input => {
+    const col = input.dataset.filterCol;
+    const value = input.value.trim().toLowerCase();
+    if (value) {
+      filters[col] = value;
+    }
+  });
+
+  let filteredData = window.fullCacheSiswa;
+
+  if (Object.keys(filters).length > 0) {
+    filteredData = window.fullCacheSiswa.filter(s => {
+      let match = true;
+      for (const col in filters) {
+        const filterValue = filters[col];
+        if (col === "Domisili") { // Special handling for combined address fields
+          const domisiliText = `${s.Dusun || ''} ${s.Desa || ''} ${s.RT || ''} ${s.RW || ''} ${s.Kecamatan || ''} ${s.Kabupaten || ''}`.toLowerCase();
+          if (!domisiliText.includes(filterValue)) match = false;
+        } else {
+          if (!String(s[col] || '').toLowerCase().includes(filterValue)) match = false;
+        }
+        if (!match) break;
+      }
+      return match;
+    });
+  }
+  renderTabelSiswa(filteredData);
+}
+
+function renderTabelSiswa(data) {
+  const container = document.getElementById('tabel-siswa-body');
+  if (!data || data.length === 0) {
+    container.innerHTML = '<tr><td colspan="5" class="p-8 text-center text-slate-400">Database masih kosong.</td></tr>';
+    return;
+  }
+  container.innerHTML = data.map((s, i) => `
+    <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+      <td class="p-3 text-xs font-bold text-slate-700">${s.Nama}</td>
+      <td class="p-3 text-xs font-mono">${s.NISN}</td>
+      <td class="p-3 text-xs">${s.Kelas || '-'}</td>
+      <td class="p-3 text-[10px] text-slate-500 italic">${s.Dusun || '-'}, RT ${s.RT || 0}/RW ${s.RW || 0}</td>
+      <td class="p-3 text-right space-x-2">
+        <button onclick="editSiswaRow('${btoa(unescape(encodeURIComponent(JSON.stringify(s))))}')" class="text-brand-blue hover:text-sky-700"><i class="fa fa-edit"></i></button>
+        <button onclick="hapusDataSiswa('${s.NISN}', '${s.Nama.replace(/'/g, "\\'")}')" class="text-rose-500 hover:text-rose-700"><i class="fa fa-trash"></i></button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function editSiswaRow(encoded) {
+  window.selectedSiswa = JSON.parse(decodeURIComponent(escape(atob(encoded))));
+  bukaModalSiswa('form');
+}
+
+function eksporDataSiswaExcel() {
+  setLoading(true, "Menyiapkan Data...");
+  google.script.run.withSuccessHandler(data => {
+    setLoading(false);
+    if (!data || data.length === 0) {
+      tampilkanToast("warning", "EKSPOR GAGAL", "Database siswa masih kosong.");
+      return;
+    }
+    
+    // Konversi array JSON ke Worksheet Excel menggunakan library XLSX
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Database_Siswa");
+    
+    // Unduh File
+    XLSX.writeFile(wb, `Database_Siswa_${new Date().getFullYear()}.xlsx`);
+    tampilkanToast("success", "BERHASIL", "File Excel berhasil diunduh.");
+  }).ambilSemuaSiswa();
+}
+
+function downloadFormatSiswaExcel() {
+  const headers = [
+    "Nama", "NIS", "NISN", "Tempat_Lahir", "Tanggal_Lahir", "Nama_Ayah", "Nama_Ibu", "Kelas", "Tahun_Ajaran", "VA_PIP", "Rek_PIP", "Nomor_Ijazah", "Ket_Lulus",
+    "Pendidikan Agama dan Budi Pekerti",
+    "Pendidikan Pancasila",
+    "Bahasa Indonesia",
+    "Matematika",
+    "Ilmu Pengetahuan Alam dan Sosial",
+    "Pendidikan Jasmani, Olahraga, dan Kesehatan",
+    "Seni dan Budaya",
+    "Bahasa Inggris",
+    "Bahasa Madura",
+    "Baca Tulis Al Quran (BTA)"
+  ];
+  
+  const ws = XLSX.utils.aoa_to_sheet([headers]);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Database_Siswa");
+  
+  // Unduh File
+  XLSX.writeFile(wb, "Format_Database_Siswa.xlsx");
+  tampilkanToast("info", "DOWNLOAD", "Format Excel berhasil diunduh.");
+}
+
+function handleImporSiswaExcel(event) {
+  const file = event.target.files[0];
+  const reader = new FileReader();
+  reader.onload = e => {
+    const dataRaw = new Uint8Array(e.target.result);
+    const workbook = XLSX.read(dataRaw, { type: 'array' });
+    const firstSheet = workbook.SheetNames[0];
+    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[firstSheet]);
+
+    if (!jsonData || jsonData.length === 0) {
+      tampilkanToast("error", "FILE KOSONG", "Tidak ada data dalam file Excel tersebut.");
+      return;
+    }
+
+    setLoading(true, "Mengimpor...");
+    google.script.run.withSuccessHandler(res => {
+      setLoading(false);
+      Swal.fire('Impor Selesai', res.message, 'success');
+      event.target.value = "";
+    }).imporSiswaBatch(jsonData);
+  };
+  reader.readAsArrayBuffer(file);
+}
+
+// =============================================================
+// MANAJEMEN DATABASE GURU
+// =============================================================
+function filterGuru(query) {
+  const resultsDiv = document.getElementById('guru_results_list');
+  if (!resultsDiv || !query || query.length < 3) {
+    resultsDiv.innerHTML = ""; resultsDiv.classList.add('hidden'); return;
+  }
+  google.script.run.withSuccessHandler(function(data) {
+    if (!data || data.length === 0) resultsDiv.innerHTML = '<div class="p-3 text-[10px] text-center italic">Tidak ditemukan...</div>';
+    else {
+      resultsDiv.innerHTML = data.map(g => {
+        const encoded = btoa(unescape(encodeURIComponent(JSON.stringify(g))));
+        return `<div onclick="pilihGuru('${encoded}')" class="p-3 text-xs hover:bg-blue-50 cursor-pointer flex justify-between">
+          <div><b>${g.Nama}</b><br><span class="text-[9px]">NIP: ${g.NIP}</span></div>
+          ${window.isBatchModeGuru ? '<i class="fa fa-plus-circle text-blue-400"></i>' : ''}
+        </div>`;
+      }).join('');
+    }
+    resultsDiv.classList.remove('hidden');
+  }).cariGuru(query);
+}
+
+function renderGuruResults(results) {
+  const list = document.getElementById('guru_results_list');
+  list.innerHTML = '';
+  results.forEach(guru => {
+    const div = document.createElement('div');
+    // PERHATIKAN: Gunakan tanda kutip '${guru.NIP}' agar dibaca sebagai teks, bukan angka
+    div.innerHTML = `
+      <div onclick="pilihGuru('${guru.NIP}', '${guru.Nama.replace(/'/g, "\\'")}')" class="p-2 hover:bg-slate-100 cursor-pointer">
+        <div class="font-bold">${guru.Nama}</div>
+        <div class="text-[10px] text-slate-500">NIP: ${guru.NIP}</div>
+      </div>
+    `;
+    list.appendChild(div);
+  });
+}
+
+
+function pilihGuru(encodedData) {
+  try {
+    const data = JSON.parse(decodeURIComponent(escape(atob(encodedData))));
+    
+  if (window.isBatchModeGuru) {
+    // Gunakan kombinasi Nama dan NIP untuk mengecek keunikan jika NIP adalah tanda hubung
+    const isExist = window.selectedGuruList.some(g => 
+      (g.NIP !== "-" && g.NIP === data.NIP) || (g.NIP === "-" && g.Nama === data.Nama)
+    );
+    if (!isExist) {
+      window.selectedGuruList.push(data);
+      tampilkanToast("success", "DITAMBAHKAN", `${data.Nama} masuk dalam antrean.`);
+    }
+    const searchInp = document.getElementById('search_guru');
+    if (searchInp) {
+      searchInp.value = "";
+      searchInp.focus();
+    }
+    renderSelectedGuruList();
+  } else {
+    window.selectedGuru = data;
+    document.getElementById('search_guru').value = data.Nama;
+  }
+  document.getElementById('guru_results_list').classList.add('hidden');
+  updateLivePreview();
+  } catch (e) { console.error("Gagal pilih guru:", e); }
+}
+
+/**
+ * GURU: Mengisi data guru ke formulir TTD (di sidebar)
+ */
+function isiDataGuruKeForm(guru) {
+  if (!guru) return;
+  document.getElementById('p1_nama').value = guru.Nama || '';
+  document.getElementById('p1_nip').value = guru.NIP || '';
+  document.getElementById('p1_jabatan').value = guru.Jabatan || '';
+  document.getElementById('p1_pangkat').value = guru.Pangkat_Golongan || '';
+  updateLivePreview();
+}
+
+function toggleBatchModeGuru(val) {
+  window.isBatchModeGuru = val;
+  window.selectedGuruList = [];
+  document.getElementById('guru_selected_list').classList.toggle('hidden', !val);
+  updateLivePreview();
+}
+
+function renderSelectedGuruList() {
+  const container = document.getElementById('guru_selected_list');
+  container.innerHTML = window.selectedGuruList.map((g, i) => `
+    <div class="flex items-center gap-1.5 px-2 py-1 bg-blue-600 text-white text-[9px] font-bold rounded-lg">
+      ${g.Nama} <button onclick="window.selectedGuruList.splice(${i}, 1); renderSelectedGuruList(); updateLivePreview();"><i class="fa fa-times-circle"></i></button>
+    </div>`).join('');
+  container.classList.toggle('hidden', window.selectedGuruList.length === 0);
+}
+
+function bukaModalGuru(tab = 'form') {
+  const form = document.getElementById('form-guru');
+  form.reset();
+  switchTabGuru(tab);
+
+  if (window.selectedGuru) {
+    Object.keys(window.selectedGuru).forEach(k => {
+      const input = form.querySelector(`[name="${k}"]`);
+      if (input) input.value = window.selectedGuru[k];
+    });
+    document.getElementById('btn-hapus-guru').classList.remove('hidden');
+  } else {
+    document.getElementById('btn-hapus-guru').classList.add('hidden');
+  }
+
+  document.getElementById('modal-guru').classList.remove('hidden');
+}
+
+function switchTabGuru(target) {
+  const formArea = document.getElementById('guru-tab-form');
+  const tableArea = document.getElementById('guru-tab-table');
+  const btnForm = document.getElementById('tab-guru-form-btn');
+  const btnTable = document.getElementById('tab-guru-table-btn');
+
+  if (target === 'form') {
+    formArea.classList.remove('hidden'); tableArea.classList.add('hidden');
+    if(btnForm) btnForm.className = "py-2 border-b-2 border-brand-blue text-brand-blue";
+    if(btnTable) btnTable.className = "py-2 border-b-2 border-transparent text-slate-400 hover:text-slate-600";
+  } else {
+    formArea.classList.add('hidden'); tableArea.classList.remove('hidden');
+    if(btnForm) btnForm.className = "py-2 border-b-2 border-transparent text-slate-400 hover:text-slate-600";
+    if(btnTable) btnTable.className = "py-2 border-b-2 border-brand-blue text-brand-blue";
+    muatTabelGuru();
+  }
+}
+
+function muatTabelGuru() {
+  const container = document.getElementById('tabel-guru-body');
+  // Render Skeleton Table
+  // Clear filter inputs when loading new data
+  document.querySelectorAll('#guru-tab-table input[data-filter-col]').forEach(input => {
+    input.value = '';
+  });
+  container.innerHTML = Array(4).fill(0).map(() => `
+    <tr class="border-b border-slate-50">
+      <td class="p-3"><div class="h-4 w-32 skeleton-box rounded"></div></td>
+      <td class="p-3"><div class="h-4 w-24 skeleton-box rounded"></div></td>
+      <td class="p-3"><div class="h-4 w-20 skeleton-box rounded"></div></td>
+      <td class="p-3"><div class="h-4 w-8 ml-auto skeleton-box rounded"></div></td>
+    </tr>
+  `).join('');
+  
+  google.script.run.withSuccessHandler(data => {
+    window.fullCacheGuru = data || [];
+    renderTabelGuru(window.fullCacheGuru);
+    updateHeaderStats();
+        }).ambilSemuaGuru();
+}
+
+function filterTabelGuru() {
+  const filters = {};
+  document.querySelectorAll('#guru-tab-table input[data-filter-col]').forEach(input => {
+    const col = input.dataset.filterCol;
+    const value = input.value.trim().toLowerCase();
+    if (value) {
+      filters[col] = value;
+    }
+  });
+
+  let filteredData = window.fullCacheGuru;
+
+  if (Object.keys(filters).length > 0) {
+    filteredData = window.fullCacheGuru.filter(g => {
+      let match = true;
+      for (const col in filters) {
+        const filterValue = filters[col];
+        if (!String(g[col] || '').toLowerCase().includes(filterValue)) match = false;
+        if (!match) break;
+      }
+      return match;
+    });
+  }
+  renderTabelGuru(filteredData);
+}
+
+function hapusDataGuru(nipManual, namaManual) {
+  const nip = nipManual || document.querySelector('#form-guru [name="NIP"]').value;
+  const nama = namaManual || document.querySelector('#form-guru [name="Nama"]').value;
+  if (!nip) return;
+
+  Swal.fire({
+    title: 'Hapus Guru?',
+    text: `Data ${nama} (${nip}) akan dihapus secara permanen dari database.`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#e11d48',
+    confirmButtonText: 'Ya, Hapus',
+    cancelButtonText: 'Batal'
+  }).then((result) => {
+    if (result.isConfirmed) {
+      setLoading(true, "Menghapus...");
+      google.script.run.withSuccessHandler(res => {
+        setLoading(false);
+        tampilkanToast(res.status === "SUCCESS" ? "success" : "error", "HAPUS", res.message);
+        if (res.status === "SUCCESS") {
+          window.selectedGuru = null;
+          if (!nipManual) tutupModalGuru();
+          muatTabelGuru();
+          updateLivePreview();
+        }
+      }).hapusGuru(nip);
+    }
+  });
+}
+
+function bukaModalSettings() {
+  document.getElementById('modal-settings').classList.remove('hidden');
+  if (typeof loadKodeKlasifikasiSurat === "function") loadKodeKlasifikasiSurat();
+  renderSettingsTemplateList(); // Panggil render list template saat modal dibuka
+}
+
+function renderSettingsTemplateList() {
+  const list = document.getElementById('settings-template-list');
+  if (!list || !window.cacheTemplates) return;
+  
+  if (window.cacheTemplates.length === 0) {
+    list.innerHTML = '<div class="p-2 text-center text-slate-400">Kosong</div>';
+    return;
+  }
+  
+  list.innerHTML = window.cacheTemplates.map(t => `
+    <div class="flex items-center justify-between p-2 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors">
+      <span class="truncate pr-2 font-medium">${t.nama}</span>
+      <button onclick="hapusSatuTemplate('${t.nama.replace(/'/g, "\\'")}')" class="text-rose-500 hover:text-rose-700 px-1"><i class="fa fa-trash-alt"></i></button>
+    </div>
+  `).join('');
+}
+
+function hapusSatuTemplate(nama) {
+  Swal.fire({
+    title: 'Hapus Template?',
+    text: `Hapus master draf '${nama}'?`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#e11d48',
+    confirmButtonText: 'Hapus'
+  }).then(res => {
+    if (res.isConfirmed) {
+      setLoading(true, "Menghapus template...");
+      google.script.run.withSuccessHandler(response => {
+        setLoading(false);
+        if (response.status === "SUCCESS") {
+          loadKoleksiDatabase(); // Refresh cache global
+          setTimeout(renderSettingsTemplateList, 500); // Refresh list di modal
+          tampilkanToast("success", "TERHAPUS", response.message);
+        }
+      }).hapusTemplateSatu(nama);
+    }
+  });
+}
+
+function renderTabelGuru(data) {
+  const container = document.getElementById('tabel-guru-body');
+  if (!data || data.length === 0) {
+    container.innerHTML = '<tr><td colspan="4" class="p-8 text-center text-slate-400">Database guru masih kosong.</td></tr>';
+    return;
+  }
+  container.innerHTML = data.map((g, i) => `
+    <tr class="border-b border-slate-50 hover:bg-slate-50/50 transition-colors">
+      <td class="p-3 text-xs font-bold text-slate-700">${g.Nama}</td>
+      <td class="p-3 text-xs font-mono">${g.NIP}</td>
+      <td class="p-3 text-xs">${g.Jabatan || '-'}</td>
+      <td class="p-3 text-right space-x-2">
+        <button onclick="editGuruRow('${btoa(unescape(encodeURIComponent(JSON.stringify(g))))}')" class="text-brand-blue hover:text-sky-700"><i class="fa fa-edit"></i></button>
+        <button onclick="hapusDataGuru('${g.NIP}', '${g.Nama.replace(/'/g, "\\'")}')" class="text-rose-500 hover:text-rose-700"><i class="fa fa-trash"></i></button>
+      </td>
+    </tr>
+  `).join('');
+}
+
+function filterTabelGuru(query) {
+  const q = query.toLowerCase();
+  const filtered = window.fullCacheGuru.filter(g => 
+    g.Nama.toLowerCase().includes(q) || g.NIP.toLowerCase().includes(q)
+  );
+  renderTabelGuru(filtered);
+}
+
+function editGuruRow(encoded) {
+  window.selectedGuru = JSON.parse(decodeURIComponent(escape(atob(encoded))));
+  bukaModalGuru('form');
+}
+
+function simpanDataGuru() {
+  const form = document.getElementById('form-guru');
+  const data = {};
+  new FormData(form).forEach((v, k) => data[k] = v);
+  setLoading(true, "Menyimpan...");
+  google.script.run.withSuccessHandler(res => {
+    setLoading(false);
+    tampilkanToast("success", "BERHASIL", res.message);
+    tutupModalGuru();
+    muatTabelGuru();
+    updateLivePreview();
+  }).simpanGuruBaru(data);
+}
+
+function downloadFormatGuruExcel() {
+  const ws = XLSX.utils.aoa_to_sheet([["Nama", "NIP", "NUPTK", "Jabatan", "Pangkat_Golongan", "Unit_Kerja", "Tugas_Utama", "Tugas_Tambahan"]]);
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Database_Guru");
+  XLSX.writeFile(wb, "Format_Database_Guru.xlsx");
+}
+
+function eksporDataGuruExcel() {
+  google.script.run.withSuccessHandler(data => {
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "Guru");
+    XLSX.writeFile(wb, "Data_Guru.xlsx");
+  }).ambilSemuaGuru();
+}
+
+function tutupModalGuru() { document.getElementById('modal-guru').classList.add('hidden'); }
+
+function handleImporGuruExcel(event) {
+  const reader = new FileReader();
+  reader.onload = e => {
+    const workbook = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+    const jsonData = XLSX.utils.sheet_to_json(workbook.Sheets[workbook.SheetNames[0]]);
+    google.script.run.withSuccessHandler(res => Swal.fire('Impor Selesai', res.message, 'success')).imporGuruBatch(jsonData);
+  };
+  reader.readAsArrayBuffer(event.target.files[0]);
+}
+
+function setupDashboardUI() {
+  if (globalAppName) {
+    document.getElementById('app-title-login').innerText = globalAppName;
+    document.getElementById('app-title-nav').innerText = globalAppName;
+    if(document.getElementById('footer-app-name-meta')) document.getElementById('footer-app-name-meta').innerText = globalAppName;
+    if(document.getElementById('about-app-for')) document.getElementById('about-app-for').innerText = globalAppName;
+    if(document.getElementById('about-app-engine-name')) document.getElementById('about-app-engine-name').innerText = globalAppName + " Engine";
+  }
+  if (globalLogo) document.getElementById('app-logo-login').src = globalLogo;
+  if (globalLogo) document.getElementById('brand-logo-nav').src = globalLogo;
+  const inputTgl = document.getElementById('in_tanggal');
+  if (inputTgl) {
+    const now = new Date();
+    inputTgl.value = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  }
+}
+
+function refreshUIIdentity(name, logo) {
+  if (document.getElementById('app-title-nav')) document.getElementById('app-title-nav').innerText = name;
+  if (document.getElementById('app-title-login')) document.getElementById('app-title-login').innerText = name;
+  if (document.getElementById('footer-app-name-meta')) document.getElementById('footer-app-name-meta').innerText = name;
+  if (document.getElementById('about-app-for')) document.getElementById('about-app-for').innerText = name;
+  if (document.getElementById('about-app-engine-name')) document.getElementById('about-app-engine-name').innerText = name + " Engine";
+  if (logo && document.getElementById('brand-logo-nav')) document.getElementById('brand-logo-nav').src = logo;
+}
+
+document.addEventListener("DOMContentLoaded", initializeApp);
+
+/**
+ * Optimalisasi Mobile: Menyesuaikan skala pratinjau agar fit-to-screen
+ */
+function adjustPreviewScaleMobile() {
+  if (window.innerWidth > 1024) {
+    const area = document.getElementById('print-area');
+    if (area) { area.style.transform = ''; area.style.margin = ''; }
+    return;
+  }
+
+  const pane = document.getElementById('preview-pane');
+  const area = document.getElementById('print-area');
+  if (!pane || !area) return;
+
+  const size = document.getElementById('in_ukuran_kertas')?.value || "size-a4";
+  const paperWidthMm = size === 'size-f4' ? 215 : 210;
+  const paperWidthPx = paperWidthMm * (96 / 25.4);
+  const padding = 32; // Total padding px
+  const availableWidth = pane.clientWidth - padding;
+  const scale = Math.min(1, availableWidth / paperWidthPx);
+
+  area.style.transform = `scale(${scale})`;
+  area.style.transformOrigin = 'top center';
+  // Beri margin negatif bawah agar scroll container tidak terlalu panjang karena scale
+  area.style.marginBottom = `-${area.offsetHeight * (1 - scale)}px`;
+}
+
+function toggleMobileView() {
+  const dashboard = document.getElementById('main-dashboard');
+  const icon = document.getElementById('mobile-toggle-icon');
+  mobileViewMode = (mobileViewMode === "editor") ? "preview" : "editor";
+  
+  dashboard.classList.toggle('mobile-focus-preview', mobileViewMode === "preview");
+  dashboard.classList.toggle('mobile-focus-editor', mobileViewMode === "editor");
+  icon.className = (mobileViewMode === "preview") ? "fa fa-pen-nib text-xl" : "fa fa-eye text-xl";
+  if (mobileViewMode === "preview") setTimeout(adjustPreviewScaleMobile, 50);
+}
+
+function updateHeaderStats() {
+  const container = document.getElementById('header-stats');
+  if (!container) return;
+  
+  const stats = [
+    { label: 'Siswa', count: window.fullCacheSiswa.length, color: 'text-emerald-400', bg: 'bg-emerald-500/10', border: 'border-emerald-500/20', icon: 'fa-user-graduate', action: "bukaModalSiswa('table')" },
+    { label: 'Guru', count: window.fullCacheGuru.length, color: 'text-blue-400', bg: 'bg-blue-500/10', border: 'border-blue-500/20', icon: 'fa-chalkboard-teacher', action: "bukaModalGuru('table')" },
+    { label: 'Arsip', count: window.cacheArsip.length, color: 'text-amber-400', bg: 'bg-amber-500/10', border: 'border-amber-500/20', icon: 'fa-box-archive', action: "switchTab('arsip')" }
+  ];
+
+  container.innerHTML = stats.map(s => `
+    <div class="flex items-center gap-2.5 px-3 py-1.5 rounded-xl ${s.bg} border ${s.border} shadow-sm transition-transform hover:scale-105 cursor-pointer" title="${s.count} Data ${s.label}" onclick="${s.action}">
+      <i class="fa ${s.icon} text-sm ${s.color}"></i>
+      <span class="text-xs font-black text-white">${s.count}</span>
+    </div>
+  `).join('');
+}
+
+function toggleSidebarCollapse() {
+  const container = document.getElementById('sidebar-container');
+  const sidebar = document.getElementById('main-sidebar');
+  const icon = document.getElementById('sidebar-toggle-icon');
+  
+  if (sidebar.style.width === '0px') {
+    // Tampilkan kembali
+    sidebar.style.width = ''; // Kembali ke CSS class
+    sidebar.classList.remove('opacity-0');
+    icon.className = 'fa fa-chevron-left text-[10px]';
+  } else {
+    // Sembunyikan
+    sidebar.style.width = '0px';
+    sidebar.classList.add('opacity-0');
+    icon.className = 'fa fa-chevron-right text-[10px]';
+  }
+  
+  // Beri sedikit delay agar transisi selesai sebelum refresh preview
+  setTimeout(updateLivePreview, 305);
+  setTimeout(adjustPreviewScaleMobile, 310);
+}
+
+window.addEventListener('resize', adjustPreviewScaleMobile);
+
+function bukaModalAbout() {
+  document.getElementById('modal-about').classList.remove('hidden');
+}
+
+function tutupModalAbout() {
+  document.getElementById('modal-about').classList.add('hidden');
+}
+
+function switchSettingsTab(target) {
+  // Tab buttons
+  ['umum', 'data', 'klasifikasi', 'user'].forEach(t => {
+    const btn = document.getElementById(`set-tab-${t}`);
+    const content = document.getElementById(`set-content-${t}`);
+    
+    if (btn && content) {
+      if (t === target) {
+        btn.className = "w-full flex items-center gap-3 px-4 py-3 rounded-2xl bg-brand-blue text-white shadow-lg shadow-brand-blue/20 transition-all font-bold text-xs uppercase tracking-widest";
+        content.classList.remove('hidden');
+      } else {
+        btn.className = "w-full flex items-center gap-3 px-4 py-3 rounded-2xl hover:bg-slate-200 dark:hover:bg-slate-800 text-slate-500 dark:text-slate-400 transition-all font-bold text-xs uppercase tracking-widest";
+        content.classList.add('hidden');
+      }
+    }
+  });
+  
+  if (target === 'klasifikasi') loadKodeKlasifikasiSurat();
+  if (target === 'user') muatTabelUserAdmin();
+}
+
+function bukaManajemenUser() {
+  bukaModalSettings();
+  switchSettingsTab('user');
+}
+
+function muatTabelUserAdmin() {
+  const container = document.getElementById('tabel-user-body');
+  container.innerHTML = '<tr><td colspan="4" class="p-4 text-center">Memuat...</td></tr>';
+  
+  google.script.run.withSuccessHandler(data => {
+    if (!data || data.length === 0) {
+      container.innerHTML = '<tr><td colspan="4" class="p-4 text-center">Belum ada user tambahan.</td></tr>';
+      return;
+    }
+    container.innerHTML = data.map(u => `
+      <tr class="border-b dark:border-slate-800">
+        <td class="p-3 font-bold">${u.Username}</td>
+        <td class="p-3">${u.Nama_Lengkap}</td>
+        <td class="p-3"><span class="px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-[8px] font-black">${u.Role}</span></td>
+        <td class="p-3 text-right">
+          <button onclick="editUserAdmin('${btoa(unescape(encodeURIComponent(JSON.stringify(u))))}')" class="text-brand-blue mr-2"><i class="fa fa-edit"></i></button>
+          <button onclick="hapusUserAdmin('${u.Username}')" class="text-rose-500"><i class="fa fa-trash"></i></button>
+        </td>
+      </tr>
+    `).join('');
+  }).ambilSemuaUser();
+}
+
+function editUserAdmin(encoded) {
+  const u = JSON.parse(decodeURIComponent(escape(atob(encoded))));
+  const form = document.getElementById('form-mgmt-user');
+  form.querySelector('[name="Username"]').value = u.Username;
+  form.querySelector('[name="Password"]').value = u.Password;
+  form.querySelector('[name="Nama_Lengkap"]').value = u.Nama_Lengkap;
+  form.querySelector('[name="Role"]').value = u.Role;
+  tampilkanToast("info", "EDIT USER", "Silakan ubah data pada form.");
+}
+
+function hapusUserAdmin(username) {
+  if (username === "admin") {
+    tampilkanToast("error", "DITOLAK", "User admin utama tidak boleh dihapus.");
+    return;
+  }
+  Swal.fire({
+    title: 'Hapus User?',
+    text: `Akses untuk ${username} akan dicabut permanen.`,
+    icon: 'warning',
+    showCancelButton: true,
+    confirmButtonColor: '#e11d48',
+    confirmButtonText: 'Ya, Hapus'
+  }).then(res => {
+    if (res.isConfirmed) {
+      setLoading(true);
+      google.script.run.withSuccessHandler(response => {
+        setLoading(false);
+        tampilkanToast(response.status === "SUCCESS" ? "success" : "error", "HAPUS", response.message);
+        muatTabelUserAdmin();
+      }).hapusUserDatabase(username);
+    }
+  });
+}
+
+/**
+ * SURAT MASUK: Logika Simpan dan OCR
+ */
+function updateFileLabel(input) {
+  const label = document.getElementById('label_file_masuk');
+  if (input.files && input.files[0]) {
+    label.innerText = input.files[0].name.toUpperCase();
+    label.classList.add('text-emerald-600');
+  }
+}
+
+function prosesSimpanSuratMasuk() {
+  const asal = document.getElementById('in_masuk_asal').value;
+  const nomor = document.getElementById('in_masuk_nomor').value;
+  const perihal = document.getElementById('in_masuk_perihal').value;
+  const tanggal = document.getElementById('in_masuk_tanggal').value;
+  const fileInput = document.getElementById('file_surat_masuk');
+  
+  if (!asal || !nomor || !fileInput.files[0]) {
+    tampilkanToast("error", "BELUM LENGKAP", "Mohon isi metadata dan pilih file surat.");
+    return;
+  }
+
+  setLoading(true, "Menganalisis Dokumen (OCR)...");
+  
+  const file = fileInput.files[0];
+  const reader = new FileReader();
+  
+  reader.onload = function(e) {
+    const base64Data = e.target.result.split(',')[1];
+    const mimeType = file.type;
+    
+    const metadata = {
+      asal_surat: asal,
+      nomor_asal: nomor,
+      perihal: perihal,
+      tanggal_terima: tanggal,
+      operator: userSessionName
+    };
+
+    google.script.run.withSuccessHandler(function(res) {
+      setLoading(false);
+      if (res.status === "SUCCESS") {
+        tampilkanToast("success", "BERHASIL SCAN", res.message);
+        
+        // Tampilkan cuplikan hasil OCR di UI
+        const resultBox = document.getElementById('ocr_result_box');
+        const previewText = document.getElementById('ocr_preview_text');
+        if (resultBox && previewText) {
+          resultBox.classList.remove('hidden');
+          previewText.innerText = res.extracted;
+        }
+        
+        // Reset Form
+        document.getElementById('in_masuk_asal').value = "";
+        document.getElementById('in_masuk_nomor').value = "";
+        document.getElementById('in_masuk_perihal').value = "";
+        fileInput.value = "";
+        document.getElementById('label_file_masuk').innerText = "PILIH DOKUMEN (PDF/JPG)";
+      } else {
+        tampilkanToast("error", "GAGAL", res.message);
+      }
+    }).simpanSuratMasukOCR(metadata, base64Data, mimeType);
+  };
+  reader.readAsDataURL(file);
+}
+
+</script>
